@@ -465,3 +465,90 @@ def get_backups():
             size = os.path.getsize(path)
             backups.append({"filename": f, "path": path, "size": size})
     return backups
+
+
+# --- Export / Import (.mynote) ---
+
+def export_note(note_id, dest_path):
+    """Export a note as .mynote file (ZIP with JSON metadata + attachments)."""
+    import zipfile
+    import json
+
+    note = get_note(note_id)
+    if not note:
+        raise ValueError("Nota non trovata")
+
+    tags = get_note_tags(note_id)
+    attachments = get_note_attachments(note_id)
+
+    metadata = {
+        "title": note["title"],
+        "content": note["content"],
+        "created_at": note["created_at"],
+        "updated_at": note["updated_at"],
+        "is_pinned": note["is_pinned"],
+        "is_favorite": note["is_favorite"],
+        "is_encrypted": note["is_encrypted"],
+        "tags": [t["name"] for t in tags],
+        "attachments": [a["original_name"] for a in attachments],
+    }
+
+    with zipfile.ZipFile(dest_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("note.json", json.dumps(metadata, indent=2, ensure_ascii=False))
+        for att in attachments:
+            att_path = os.path.join(ATTACHMENTS_DIR, att["filename"])
+            if os.path.exists(att_path):
+                zf.write(att_path, f"attachments/{att['original_name']}")
+
+    return dest_path
+
+
+def import_note(source_path, category_id=None):
+    """Import a .mynote file. Returns the new note ID."""
+    import zipfile
+    import json
+    import shutil
+    import uuid
+
+    with zipfile.ZipFile(source_path, "r") as zf:
+        meta = json.loads(zf.read("note.json"))
+
+        note_id = add_note(meta["title"], meta.get("content", ""), category_id)
+
+        # Restore flags
+        conn = get_connection()
+        conn.execute(
+            "UPDATE notes SET is_pinned = ?, is_favorite = ?, is_encrypted = ? WHERE id = ?",
+            (meta.get("is_pinned", 0), meta.get("is_favorite", 0),
+             meta.get("is_encrypted", 0), note_id),
+        )
+        conn.commit()
+        conn.close()
+
+        # Restore tags
+        for tag_name in meta.get("tags", []):
+            tag_id = add_tag(tag_name)
+            set_note_tags(note_id, [tag_id] + [t["id"] for t in get_note_tags(note_id)])
+
+        # Restore attachments
+        for name in zf.namelist():
+            if name.startswith("attachments/"):
+                original_name = os.path.basename(name)
+                if not original_name:
+                    continue
+                ext = os.path.splitext(original_name)[1]
+                filename = f"{uuid.uuid4().hex}{ext}"
+                dest = os.path.join(ATTACHMENTS_DIR, filename)
+                os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
+                with zf.open(name) as src, open(dest, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                now = datetime.now().isoformat()
+                conn = get_connection()
+                conn.execute(
+                    "INSERT INTO attachments (note_id, filename, original_name, added_at) VALUES (?, ?, ?, ?)",
+                    (note_id, filename, original_name, now),
+                )
+                conn.commit()
+                conn.close()
+
+    return note_id

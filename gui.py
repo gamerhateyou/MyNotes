@@ -81,6 +81,9 @@ class MyNotesApp:
         file_menu.add_command(label="Esporta nota PDF...", command=self._export_pdf)
         file_menu.add_command(label="Esporta tutte (HTML)...", command=self._export_all_html)
         file_menu.add_separator()
+        file_menu.add_command(label="Condividi nota (.mynote)...", command=self._export_mynote)
+        file_menu.add_command(label="Importa nota (.mynote)...", command=self._import_mynote)
+        file_menu.add_separator()
         file_menu.add_command(label="Esci", command=self._on_close, accelerator="Ctrl+Q")
         menubar.add_cascade(label="File", menu=file_menu)
 
@@ -845,6 +848,44 @@ class MyNotesApp:
                 "In alternativa usa l'esportazione HTML.",
                 parent=self.root
             )
+
+    # --- Condividi / Importa (.mynote) ---
+
+    def _export_mynote(self):
+        if self.current_note_id is None:
+            return
+        note = db.get_note(self.current_note_id)
+        path = filedialog.asksaveasfilename(
+            parent=self.root, title="Condividi nota",
+            defaultextension=".mynote", initialfile=f"{note['title']}.mynote",
+            filetypes=[("MyNotes", "*.mynote")]
+        )
+        if path:
+            try:
+                db.export_note(self.current_note_id, path)
+                self.status_var.set(f"Nota condivisa: {os.path.basename(path)}")
+                messagebox.showinfo("Condividi", f"Nota esportata:\n{path}\n\nCondividi questo file per importarlo in un'altra app MyNotes.", parent=self.root)
+            except Exception as e:
+                messagebox.showerror("Errore", f"Esportazione fallita: {e}", parent=self.root)
+
+    def _import_mynote(self):
+        paths = filedialog.askopenfilenames(
+            parent=self.root, title="Importa nota",
+            filetypes=[("MyNotes", "*.mynote"), ("Tutti", "*.*")]
+        )
+        if not paths:
+            return
+        imported = 0
+        for path in paths:
+            try:
+                db.import_note(path, category_id=None)
+                imported += 1
+            except Exception as e:
+                messagebox.showerror("Errore", f"Importazione fallita per {os.path.basename(path)}:\n{e}", parent=self.root)
+        if imported:
+            self._load_notes()
+            self.status_var.set(f"Importate {imported} nota/e")
+            messagebox.showinfo("Importa", f"{imported} nota/e importate con successo!", parent=self.root)
 
     # --- Backup ---
 
