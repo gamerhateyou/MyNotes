@@ -89,6 +89,15 @@ def init_db():
                 saved_at TEXT NOT NULL,
                 FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE
             );
+
+            -- Indici per query frequenti
+            CREATE INDEX IF NOT EXISTS idx_notes_category ON notes(category_id);
+            CREATE INDEX IF NOT EXISTS idx_notes_deleted ON notes(is_deleted);
+            CREATE INDEX IF NOT EXISTS idx_notes_pinned ON notes(is_pinned);
+            CREATE INDEX IF NOT EXISTS idx_notes_favorite ON notes(is_favorite);
+            CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag_id);
+            CREATE INDEX IF NOT EXISTS idx_note_versions_note ON note_versions(note_id);
+            CREATE INDEX IF NOT EXISTS idx_attachments_note ON attachments(note_id);
         """)
         _migrate(conn)
         conn.commit()
@@ -261,10 +270,22 @@ def purge_trash(days=TRASH_PURGE_DAYS):
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
     with _connect() as conn:
         old_notes = conn.execute(
-            "SELECT id FROM notes WHERE is_deleted = 1 AND deleted_at < ?", (cutoff,)
+            "SELECT n.id, a.filename FROM notes n "
+            "LEFT JOIN attachments a ON a.note_id = n.id "
+            "WHERE n.is_deleted = 1 AND n.deleted_at < ?", (cutoff,)
         ).fetchall()
-    for n in old_notes:
-        permanent_delete_note(n["id"])
+        # Cancella file allegati
+        for row in old_notes:
+            if row["filename"]:
+                path = os.path.join(ATTACHMENTS_DIR, row["filename"])
+                if os.path.exists(path):
+                    os.remove(path)
+        # Cancella note (CASCADE elimina note_tags, attachments, versions)
+        note_ids = list({row["id"] for row in old_notes})
+        if note_ids:
+            placeholders = ",".join("?" * len(note_ids))
+            conn.execute(f"DELETE FROM notes WHERE id IN ({placeholders})", note_ids)
+            conn.commit()
 
 
 def get_trash_count():
@@ -275,12 +296,21 @@ def get_trash_count():
 
 # --- Note Versions ---
 
+MAX_VERSIONS_PER_NOTE = 50
+
+
 def save_version(note_id, title, content):
     now = datetime.now().isoformat()
     with _connect() as conn:
         conn.execute(
             "INSERT INTO note_versions (note_id, title, content, saved_at) VALUES (?, ?, ?, ?)",
             (note_id, title, content, now),
+        )
+        # Mantieni solo le ultime MAX_VERSIONS_PER_NOTE versioni
+        conn.execute(
+            "DELETE FROM note_versions WHERE note_id = ? AND id NOT IN "
+            "(SELECT id FROM note_versions WHERE note_id = ? ORDER BY saved_at DESC LIMIT ?)",
+            (note_id, note_id, MAX_VERSIONS_PER_NOTE),
         )
         conn.commit()
 
@@ -483,9 +513,9 @@ def import_note(source_path, category_id=None):
             )
             conn.commit()
 
-        for tag_name in meta.get("tags", []):
-            tag_id = add_tag(tag_name)
-            set_note_tags(note_id, [tag_id] + [t["id"] for t in get_note_tags(note_id)])
+        tag_ids = [add_tag(name) for name in meta.get("tags", [])]
+        if tag_ids:
+            set_note_tags(note_id, tag_ids)
 
         # Restore attachments
         with _connect() as conn:

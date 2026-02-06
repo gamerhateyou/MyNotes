@@ -1,6 +1,7 @@
 """Screenshots, image gallery, annotations, audio."""
 
 import os
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from datetime import datetime
@@ -26,6 +27,7 @@ class MediaController:
             w.destroy()
         app.gallery_labels.clear()
         app.selected_image_index = None
+        self._gallery_load_id = note_id
 
         attachments = db.get_note_attachments(note_id)
         app.gallery_attachments = [a for a in attachments if image_utils.is_image_file(a["original_name"])]
@@ -34,23 +36,41 @@ class MediaController:
             ttk.Label(app.gallery_inner, text="Nessuna immagine", style="ImgPanel.TLabel").pack(side=tk.LEFT, padx=20, pady=20)
             return
 
+        # Prepara placeholder e carica thumbnail in background
+        items = []
         for i, att in enumerate(app.gallery_attachments):
             path = os.path.join(db.ATTACHMENTS_DIR, att["filename"])
             if not os.path.exists(path):
+                items.append((i, att, path, None))
                 continue
-            try:
-                photo = image_utils.load_image_as_photo(path, max_width=100, max_height=100)
-                app._image_refs.append(photo)
-                frame = tk.Frame(app.gallery_inner, bg="#f5f5f5", padx=4, pady=4)
-                frame.pack(side=tk.LEFT, padx=3, pady=3)
-                lbl = tk.Label(frame, image=photo, bg="#f5f5f5", cursor="hand2", borderwidth=2, relief=tk.FLAT)
-                lbl.pack()
-                tk.Label(frame, text=att["original_name"][:15], bg="#f5f5f5", font=(UI_FONT, 7), fg="#666").pack()
-                lbl.bind("<Button-1>", lambda e, idx=i, l=lbl: self._select_image(idx, l))
-                lbl.bind("<Double-Button-1>", lambda e, idx=i: self._open_image(idx))
-                app.gallery_labels.append(lbl)
-            except Exception:
-                continue
+            frame = tk.Frame(app.gallery_inner, bg="#f5f5f5", padx=4, pady=4)
+            frame.pack(side=tk.LEFT, padx=3, pady=3)
+            lbl = tk.Label(frame, text="...", width=12, height=5, bg="#e0e0e0", cursor="hand2", borderwidth=2, relief=tk.FLAT)
+            lbl.pack()
+            tk.Label(frame, text=att["original_name"][:15], bg="#f5f5f5", font=(UI_FONT, 7), fg="#666").pack()
+            lbl.bind("<Button-1>", lambda e, idx=i, l=lbl: self._select_image(idx, l))
+            lbl.bind("<Double-Button-1>", lambda e, idx=i: self._open_image(idx))
+            app.gallery_labels.append(lbl)
+            items.append((i, att, path, lbl))
+
+        def _load_thumbs():
+            for i, att, path, lbl in items:
+                if self._gallery_load_id != note_id:
+                    return  # Nota cambiata, annulla
+                if lbl is None:
+                    continue
+                try:
+                    photo = image_utils.load_image_as_photo(path, max_width=100, max_height=100)
+                    app.root.after(0, lambda p=photo, l=lbl: self._set_thumb(p, l))
+                except Exception:
+                    continue
+
+        threading.Thread(target=_load_thumbs, daemon=True).start()
+
+    def _set_thumb(self, photo, label):
+        """Aggiorna thumbnail nella gallery dal thread principale."""
+        self.app._image_refs.append(photo)
+        label.config(image=photo, text="", width=0, height=0)
 
     def _select_image(self, index, label):
         for lbl in self.app.gallery_labels:
