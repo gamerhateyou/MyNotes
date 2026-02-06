@@ -36,9 +36,6 @@ def check_pyinstaller():
 def build():
     check_pyinstaller()
 
-    is_windows = sys.platform == "win32"
-    separator = ";" if is_windows else ":"
-
     # PyInstaller command
     cmd = [
         sys.executable, "-m", "PyInstaller",
@@ -47,28 +44,36 @@ def build():
         "--windowed",           # no console window
         "--noconfirm",          # overwrite without asking
         "--clean",              # clean build cache
-        # Add all Python source files
-        "--add-data", f"database.py{separator}.",
-        "--add-data", f"gui.py{separator}.",
-        "--add-data", f"dialogs.py{separator}.",
-        "--add-data", f"image_utils.py{separator}.",
-        "--add-data", f"platform_utils.py{separator}.",
-        "--add-data", f"annotator.py{separator}.",
-        "--add-data", f"updater.py{separator}.",
-        "--add-data", f"version.py{separator}.",
-        "--add-data", f"crypto_utils.py{separator}.",
-        "--add-data", f"backup_utils.py{separator}.",
-        # Hidden imports
+        # Tell PyInstaller where to find local modules
+        "--paths", ".",
+        # Local modules (PyInstaller might not auto-detect all of them)
+        "--hidden-import", "database",
+        "--hidden-import", "gui",
+        "--hidden-import", "dialogs",
+        "--hidden-import", "image_utils",
+        "--hidden-import", "platform_utils",
+        "--hidden-import", "annotator",
+        "--hidden-import", "updater",
+        "--hidden-import", "version",
+        "--hidden-import", "crypto_utils",
+        "--hidden-import", "backup_utils",
+        # PIL
         "--hidden-import", "PIL",
         "--hidden-import", "PIL.Image",
         "--hidden-import", "PIL.ImageDraw",
         "--hidden-import", "PIL.ImageFont",
         "--hidden-import", "PIL.ImageGrab",
+        # Google Drive
         "--hidden-import", "google.oauth2.credentials",
         "--hidden-import", "google.auth.transport.requests",
         "--hidden-import", "google_auth_oauthlib.flow",
         "--hidden-import", "googleapiclient.discovery",
         "--hidden-import", "googleapiclient.http",
+        # PDF export
+        "--hidden-import", "reportlab",
+        "--hidden-import", "reportlab.lib.pagesizes",
+        "--hidden-import", "reportlab.pdfgen",
+        "--hidden-import", "reportlab.pdfgen.canvas",
         # Entry point
         "main.py",
     ]
@@ -103,7 +108,7 @@ def build():
     print()
     print("Copia la cartella dist/MyNotes/ su una chiavetta USB.")
     print()
-    if is_windows:
+    if sys.platform == "win32":
         print("Per avviare: doppio click su MyNotes.exe")
     else:
         print("Per avviare: ./MyNotes o doppio click su MyNotes")
