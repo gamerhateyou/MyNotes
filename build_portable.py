@@ -80,6 +80,7 @@ def build():
         # Audio
         "--hidden-import", "sounddevice",
         "--hidden-import", "numpy",
+        "--collect-submodules", "numpy",
         "--hidden-import", "_sounddevice_data",
         # SSL certificates
         "--hidden-import", "certifi",
