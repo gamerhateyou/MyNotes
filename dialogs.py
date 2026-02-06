@@ -386,13 +386,6 @@ class BackupSettingsDialog(tk.Toplevel):
         self.folder_var = tk.StringVar(value=self.settings.get("gdrive_folder_name", "MyNotes Backup"))
         ttk.Entry(folder_frame, textvariable=self.folder_var, width=40).pack(fill=tk.X)
 
-        # Library check
-        if not backup_utils.is_gdrive_available():
-            ttk.Label(frame, text="Librerie Google non installate. Esegui:\n"
-                                  "pip install google-api-python-client google-auth-oauthlib",
-                      foreground="#cc6600", font=("Sans", 8), wraplength=350,
-                      justify=tk.LEFT).pack(anchor=tk.W, pady=(5, 0))
-
         # Buttons
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(fill=tk.X, pady=(15, 0))

@@ -64,6 +64,11 @@ def build():
         "--hidden-import", "PIL.ImageDraw",
         "--hidden-import", "PIL.ImageFont",
         "--hidden-import", "PIL.ImageGrab",
+        "--hidden-import", "google.oauth2.credentials",
+        "--hidden-import", "google.auth.transport.requests",
+        "--hidden-import", "google_auth_oauthlib.flow",
+        "--hidden-import", "googleapiclient.discovery",
+        "--hidden-import", "googleapiclient.http",
         # Entry point
         "main.py",
     ]
