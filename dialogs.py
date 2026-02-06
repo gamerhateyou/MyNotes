@@ -516,6 +516,13 @@ class BackupSettingsDialog(tk.Toplevel):
         self.max_var = tk.IntVar(value=self.settings.get("max_local_backups", 10))
         ttk.Spinbox(max_frame, from_=1, to=100, textvariable=self.max_var, width=5).pack(side=tk.LEFT, padx=5)
 
+        ret_frame = ttk.Frame(frame)
+        ret_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(ret_frame, text="Cancella backup piu vecchi di (giorni):").pack(side=tk.LEFT)
+        self.retention_var = tk.IntVar(value=self.settings.get("retention_days", 90))
+        ttk.Spinbox(ret_frame, from_=0, to=365, textvariable=self.retention_var, width=5).pack(side=tk.LEFT, padx=5)
+        ttk.Label(ret_frame, text="0 = mai", foreground="#888888").pack(side=tk.LEFT)
+
         # --- Google Drive ---
         ttk.Separator(frame).pack(fill=tk.X, pady=10)
         ttk.Label(frame, text="Google Drive", font=("Sans", 10, "bold")).pack(anchor=tk.W)
@@ -544,6 +551,13 @@ class BackupSettingsDialog(tk.Toplevel):
         ttk.Label(folder_frame, text="Nome cartella su Drive:").pack(anchor=tk.W)
         self.folder_var = tk.StringVar(value=self.settings.get("gdrive_folder_name", "MyNotes Backup"))
         ttk.Entry(folder_frame, textvariable=self.folder_var, width=40).pack(fill=tk.X)
+
+        gdrive_max_frame = ttk.Frame(frame)
+        gdrive_max_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(gdrive_max_frame, text="Max backup su Drive:").pack(side=tk.LEFT)
+        self.gdrive_max_var = tk.IntVar(value=self.settings.get("max_gdrive_backups", 20))
+        ttk.Spinbox(gdrive_max_frame, from_=0, to=100, textvariable=self.gdrive_max_var, width=5).pack(side=tk.LEFT, padx=5)
+        ttk.Label(gdrive_max_frame, text="0 = illimitato", foreground="#888888").pack(side=tk.LEFT)
 
         # Buttons
         btn_frame = ttk.Frame(frame)
@@ -589,8 +603,10 @@ class BackupSettingsDialog(tk.Toplevel):
         self.settings["auto_backup"] = self.auto_var.get()
         self.settings["local_backup_dir"] = self.dir_var.get()
         self.settings["max_local_backups"] = self.max_var.get()
+        self.settings["retention_days"] = self.retention_var.get()
         self.settings["gdrive_enabled"] = self.gdrive_var.get()
         self.settings["gdrive_folder_name"] = self.folder_var.get()
+        self.settings["max_gdrive_backups"] = self.gdrive_max_var.get()
         self.backup_utils.save_settings(self.settings)
         messagebox.showinfo("Salvato", "Impostazioni backup salvate.", parent=self)
         self.destroy()

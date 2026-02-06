@@ -15,6 +15,7 @@ import ssl
 import certifi
 
 from version import VERSION, GITHUB_REPO
+from error_codes import AppError
 
 log = logging.getLogger("updater")
 
@@ -78,10 +79,15 @@ def check_for_updates(skip_versions=None):
         req = Request(url, headers={"Accept": "application/vnd.github.v3+json"})
         with urlopen(req, timeout=10, context=ctx) as resp:
             raw = resp.read().decode()
-            data = json.loads(raw)
-    except (URLError, json.JSONDecodeError, OSError) as e:
-        log.error("Errore contatto GitHub: %s: %s", type(e).__name__, e)
-        raise ConnectionError(f"Impossibile contattare GitHub: {e}")
+    except (URLError, OSError) as e:
+        log.error("Errore rete GitHub: %s: %s", type(e).__name__, e)
+        raise AppError("UPD-001", str(e))
+
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError) as e:
+        log.error("Risposta GitHub non valida: %s", e)
+        raise AppError("UPD-002", str(e))
 
     tag = data.get("tag_name", "")
     remote_ver = _parse_version(tag)
@@ -128,46 +134,52 @@ def download_and_apply_update(download_url, progress_callback=None):
     tmp_dir = tempfile.mkdtemp(prefix="mynotes_update_")
 
     try:
-        # Download
+        # --- Download ---
         if progress_callback:
             progress_callback(0, "Download in corso...")
 
         archive_name = "update.zip" if is_windows else "update.tar.gz"
         archive_path = os.path.join(tmp_dir, archive_name)
 
-        ctx = ssl.create_default_context(cafile=certifi.where())
-        req = Request(download_url)
-        with urlopen(req, timeout=120, context=ctx) as resp:
-            total = int(resp.headers.get("Content-Length", 0))
-            downloaded = 0
-            chunk_size = 65536
+        try:
+            ctx = ssl.create_default_context(cafile=certifi.where())
+            req = Request(download_url)
+            with urlopen(req, timeout=120, context=ctx) as resp:
+                total = int(resp.headers.get("Content-Length", 0))
+                downloaded = 0
+                chunk_size = 65536
 
-            with open(archive_path, "wb") as f:
-                while True:
-                    chunk = resp.read(chunk_size)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if progress_callback and total > 0:
-                        pct = int(downloaded * 100 / total)
-                        progress_callback(pct, f"Download: {downloaded // 1024} / {total // 1024} KB")
+                with open(archive_path, "wb") as f:
+                    while True:
+                        chunk = resp.read(chunk_size)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if progress_callback and total > 0:
+                            pct = int(downloaded * 100 / total)
+                            progress_callback(pct, f"Download: {downloaded // 1024} / {total // 1024} KB")
+        except (URLError, OSError) as e:
+            raise AppError("UPD-004", str(e))
 
         if progress_callback:
             progress_callback(100, "Estrazione archivio...")
 
-        # Estrai
+        # --- Estrazione ---
         extract_dir = os.path.join(tmp_dir, "extracted")
         os.makedirs(extract_dir, exist_ok=True)
 
-        if archive_path.endswith(".zip"):
-            import zipfile
-            with zipfile.ZipFile(archive_path, 'r') as z:
-                z.extractall(extract_dir)
-        else:
-            import tarfile
-            with tarfile.open(archive_path, 'r:gz') as t:
-                t.extractall(extract_dir)
+        try:
+            if archive_path.endswith(".zip"):
+                import zipfile
+                with zipfile.ZipFile(archive_path, 'r') as z:
+                    z.extractall(extract_dir)
+            else:
+                import tarfile
+                with tarfile.open(archive_path, 'r:gz') as t:
+                    t.extractall(extract_dir)
+        except Exception as e:
+            raise AppError("UPD-005", str(e))
 
         # Trova la cartella estratta (potrebbe essere MyNotes/ dentro l'archivio)
         extracted_contents = os.listdir(extract_dir)
@@ -179,21 +191,28 @@ def download_and_apply_update(download_url, progress_callback=None):
         if progress_callback:
             progress_callback(100, "Applicazione aggiornamento...")
 
-        # Applica: copia tutti i file TRANNE data/
-        if is_windows:
-            # Su Windows non possiamo sovrascrivere l'exe in uso.
-            # Creiamo uno script .bat che fa il lavoro dopo la chiusura.
-            _create_windows_update_script(source_dir, APP_DIR, tmp_dir)
-        else:
-            _apply_files(source_dir, APP_DIR)
-            # Pulizia
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+        # --- Applicazione ---
+        try:
+            if is_windows:
+                _create_windows_update_script(source_dir, APP_DIR, tmp_dir)
+            else:
+                _apply_files(source_dir, APP_DIR)
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+        except Exception as e:
+            raise AppError("UPD-006", str(e))
 
         return True
 
-    except Exception as e:
+    except AppError as e:
+        log.error("Aggiornamento fallito: %s", e)
         if progress_callback:
-            progress_callback(-1, f"Errore: {e}")
+            progress_callback(-1, str(e))
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        return False
+    except Exception as e:
+        log.error("Errore imprevisto aggiornamento: %s: %s", type(e).__name__, e)
+        if progress_callback:
+            progress_callback(-1, f"Errore imprevisto: {e}")
         shutil.rmtree(tmp_dir, ignore_errors=True)
         return False
 

@@ -4,7 +4,7 @@ import os
 import json
 import shutil
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 import database as db
 
 SETTINGS_PATH = os.path.join(db.DATA_DIR, "backup_settings.json")
@@ -32,6 +32,8 @@ def get_settings():
         "gdrive_enabled": False,
         "gdrive_folder_name": "MyNotes Backup",
         "max_local_backups": 10,
+        "retention_days": 90,
+        "max_gdrive_backups": 20,
     }
     if os.path.exists(SETTINGS_PATH):
         try:
@@ -146,22 +148,71 @@ def do_local_backup():
     dest = settings.get("local_backup_dir", db.BACKUP_DIR)
     backup_path = db.create_backup(dest)
     max_backups = settings.get("max_local_backups", 10)
-    _cleanup_old_backups(dest, max_backups)
+    retention_days = settings.get("retention_days", 90)
+    _cleanup_old_backups(dest, max_backups, retention_days)
     return backup_path
 
 
-def _cleanup_old_backups(backup_dir, max_count):
+def _cleanup_old_backups(backup_dir, max_count, retention_days=0):
     if not os.path.exists(backup_dir):
         return
     backups = sorted(
         [f for f in os.listdir(backup_dir) if f.startswith("mynotes_backup_") and f.endswith(".db")]
     )
+    # Prima cancella per eta
+    if retention_days > 0:
+        cutoff = datetime.now() - timedelta(days=retention_days)
+        expired = []
+        for f in backups:
+            try:
+                ts = datetime.strptime(f, "mynotes_backup_%Y%m%d_%H%M%S.db")
+                if ts < cutoff:
+                    expired.append(f)
+            except ValueError:
+                continue
+        for f in expired:
+            os.remove(os.path.join(backup_dir, f))
+            backups.remove(f)
+    # Poi applica limite per numero
     while len(backups) > max_count:
         old = backups.pop(0)
         os.remove(os.path.join(backup_dir, old))
 
 
 # --- Google Drive Backup ---
+
+def _cleanup_old_gdrive_backups(service, folder_id, max_count, retention_days):
+    """Cancella backup vecchi su Google Drive: prima per eta, poi per numero."""
+    results = service.files().list(
+        q=f"'{folder_id}' in parents and trashed=false",
+        spaces="drive",
+        fields="files(id, name, createdTime)",
+        orderBy="createdTime asc",
+        pageSize=1000,
+    ).execute()
+    files = results.get("files", [])
+    if not files:
+        return
+    # Prima cancella per eta
+    if retention_days > 0:
+        cutoff = datetime.now() - timedelta(days=retention_days)
+        expired = []
+        for f in files:
+            try:
+                ct = datetime.strptime(f["createdTime"], "%Y-%m-%dT%H:%M:%S.%fZ")
+            except ValueError:
+                continue
+            if ct < cutoff:
+                expired.append(f)
+        for f in expired:
+            service.files().delete(fileId=f["id"]).execute()
+            files.remove(f)
+    # Poi applica limite per numero
+    if max_count > 0:
+        while len(files) > max_count:
+            old = files.pop(0)
+            service.files().delete(fileId=old["id"]).execute()
+
 
 def do_gdrive_backup(callback=None):
     """Upload backup to Google Drive in background thread."""
@@ -185,6 +236,11 @@ def do_gdrive_backup(callback=None):
             file_metadata = {"name": backup_name, "parents": [folder_id]}
             media = MediaFileUpload(backup_path, mimetype="application/octet-stream")
             service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+
+            # Cleanup vecchi backup su Google Drive
+            retention_days = settings.get("retention_days", 90)
+            max_gdrive = settings.get("max_gdrive_backups", 20)
+            _cleanup_old_gdrive_backups(service, folder_id, max_gdrive, retention_days)
 
             if callback:
                 callback(True, f"Backup caricato su Google Drive\nCartella: {folder_name}\nFile: {backup_name}")

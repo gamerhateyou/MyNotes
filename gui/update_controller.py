@@ -7,6 +7,7 @@ import threading
 import updater
 from version import VERSION
 from gui.constants import UI_FONT
+from error_codes import AppError
 
 log = logging.getLogger("updater.gui")
 
@@ -27,7 +28,7 @@ class UpdateController:
             try:
                 result = updater.check_for_updates(skip_versions=skip)
             except Exception:
-                log.debug("check_silent: errore ignorato", exc_info=True)
+                log.warning("check_silent: errore ignorato", exc_info=True)
                 return
             if result:
                 tag, url, notes = result
@@ -53,18 +54,28 @@ class UpdateController:
                 result = updater.check_for_updates()
                 log.info("check_for_updates() ritornato: %s", result)
                 self.app.root.after(0, lambda: self._handle_result(result))
+            except AppError as e:
+                log.warning("Errore strutturato nel controllo: %s", e, exc_info=True)
+                self.app.root.after(0, lambda: self._handle_error(e.code, e.message, e.detail))
             except Exception as e:
                 log.error("Eccezione nel thread di controllo: %s: %s", type(e).__name__, e, exc_info=True)
-                err = str(e)
-                self.app.root.after(0, lambda: self._handle_error(err))
+                self.app.root.after(0, lambda: self._handle_error(None, str(e), ""))
 
         threading.Thread(target=_check, daemon=True).start()
 
-    def _handle_error(self, error_msg):
-        log.info("_handle_error: %s", error_msg)
-        self.app.status_var.set("Errore controllo aggiornamenti")
-        messagebox.showerror("Errore", f"Impossibile verificare aggiornamenti.\n\n{error_msg}",
-                            parent=self.app.root)
+    def _handle_error(self, code, message, detail):
+        log.info("_handle_error: code=%s message=%s detail=%s", code, message, detail)
+        if code:
+            self.app.status_var.set(f"Errore: {code}")
+            body = f"Impossibile verificare aggiornamenti.\n\nCodice errore: {code}\n{message}"
+            if detail:
+                body += f"\n\nDettaglio: {detail}"
+            body += "\n\nFile di log: data/mynotes.log"
+        else:
+            self.app.status_var.set("Errore controllo aggiornamenti")
+            body = f"Impossibile verificare aggiornamenti.\n\n{message}"
+            body += "\n\nFile di log: data/mynotes.log"
+        messagebox.showerror("Errore", body, parent=self.app.root)
 
     def _handle_result(self, result):
         log.info("_handle_result: %s", result)
@@ -154,7 +165,11 @@ class UpdateController:
         progress_bar = ttk.Progressbar(frame, mode="determinate", maximum=100)
         progress_bar.pack(fill=tk.X, pady=(10, 0))
 
+        last_error = [None]
+
         def on_progress(pct, msg):
+            if pct < 0:
+                last_error[0] = msg
             app.root.after(0, lambda: (status_label.config(text=msg),
                                        progress_bar.__setitem__("value", max(0, pct))))
 
@@ -169,7 +184,11 @@ class UpdateController:
                         subprocess.Popen(updater.get_restart_command())
                         app.root.quit()
                 else:
-                    messagebox.showerror("Errore", "Aggiornamento fallito.", parent=app.root)
+                    body = "Aggiornamento fallito."
+                    if last_error[0]:
+                        body += f"\n\n{last_error[0]}"
+                    body += "\n\nFile di log: data/mynotes.log"
+                    messagebox.showerror("Errore", body, parent=app.root)
             app.root.after(0, finish)
 
         threading.Thread(target=do_download, daemon=True).start()
