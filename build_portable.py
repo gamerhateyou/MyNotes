@@ -81,6 +81,9 @@ def build():
         "--hidden-import", "sounddevice",
         "--hidden-import", "numpy",
         "--hidden-import", "_sounddevice_data",
+        # SSL certificates
+        "--hidden-import", "certifi",
+        "--collect-data", "certifi",
         # PDF export
         "--hidden-import", "reportlab",
         "--hidden-import", "reportlab.lib.pagesizes",

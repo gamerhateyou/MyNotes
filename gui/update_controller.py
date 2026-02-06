@@ -6,6 +6,7 @@ from tkinter import ttk, messagebox
 import threading
 import updater
 from version import VERSION
+from gui.constants import UI_FONT
 
 log = logging.getLogger("updater.gui")
 
@@ -15,20 +16,38 @@ class UpdateController:
         self.app = app
 
     def check_silent(self):
+        settings = updater.get_update_settings()
+        if not settings.get("auto_check", True):
+            log.info("check_silent: auto_check disabilitato, skip")
+            return
+
+        skip = settings.get("skipped_versions", [])
+
         def _check():
             try:
-                result = updater.check_for_updates()
+                result = updater.check_for_updates(skip_versions=skip)
             except Exception:
                 log.debug("check_silent: errore ignorato", exc_info=True)
                 return
             if result:
-                self.app.root.after(0, lambda: self.app.status_var.set(
-                    f"Aggiornamento disponibile: {result[0]} (Aiuto > Controlla aggiornamenti)"))
+                tag, url, notes = result
+                self.app.root.after(0, lambda: self._show_update_available(tag, url, notes))
+
         threading.Thread(target=_check, daemon=True).start()
 
     def check(self):
+        """Check manuale da menu: ignora skip e auto_check, riabilita se disabilitato."""
         log.info("check() avviato dall'utente")
         self.app.status_var.set("Controllo aggiornamenti...")
+
+        # Riabilita auto_check e pulisci skip
+        settings = updater.get_update_settings()
+        if not settings.get("auto_check", True) or settings.get("skipped_versions"):
+            settings["auto_check"] = True
+            settings["skipped_versions"] = []
+            updater.save_update_settings(settings)
+            log.info("check(): riabilitato auto_check e pulito skipped_versions")
+
         def _check():
             try:
                 result = updater.check_for_updates()
@@ -38,6 +57,7 @@ class UpdateController:
                 log.error("Eccezione nel thread di controllo: %s: %s", type(e).__name__, e, exc_info=True)
                 err = str(e)
                 self.app.root.after(0, lambda: self._handle_error(err))
+
         threading.Thread(target=_check, daemon=True).start()
 
     def _handle_error(self, error_msg):
@@ -54,9 +74,70 @@ class UpdateController:
                                 parent=self.app.root)
             return
         tag, url, notes = result
-        msg = f"Nuova versione: {tag}\n(Attuale: v{VERSION})\n\nAggiornare?"
-        if messagebox.askyesno("Aggiornamento", msg, parent=self.app.root):
+        self._show_update_available(tag, url, notes)
+
+    def _show_update_available(self, tag, url, notes):
+        """Dialog con 3 opzioni: Aggiorna, Salta versione, Non ricordare."""
+        dlg = tk.Toplevel(self.app.root)
+        dlg.title("Aggiornamento disponibile")
+        dlg.resizable(False, False)
+        dlg.transient(self.app.root)
+        dlg.grab_set()
+
+        frame = ttk.Frame(dlg, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text=f"Nuova versione disponibile: {tag}",
+                  font=(UI_FONT, 12, "bold")).pack(anchor=tk.W)
+        ttk.Label(frame, text=f"Versione attuale: v{VERSION}",
+                  font=(UI_FONT, 9), foreground="#666666").pack(anchor=tk.W, pady=(2, 10))
+
+        if notes:
+            notes_frame = ttk.LabelFrame(frame, text="Note di rilascio", padding=8)
+            notes_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+            notes_text = tk.Text(notes_frame, wrap=tk.WORD, height=8, width=50,
+                                 font=(UI_FONT, 9))
+            notes_text.insert("1.0", notes)
+            notes_text.config(state=tk.DISABLED)
+            notes_text.pack(fill=tk.BOTH, expand=True)
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill=tk.X)
+
+        def on_update():
+            dlg.destroy()
             self._do_update(url)
+
+        def on_skip():
+            settings = updater.get_update_settings()
+            skipped = settings.get("skipped_versions", [])
+            if tag not in skipped:
+                skipped.append(tag)
+            settings["skipped_versions"] = skipped
+            updater.save_update_settings(settings)
+            log.info("Versione %s aggiunta a skipped_versions", tag)
+            self.app.status_var.set(f"Versione {tag} saltata")
+            dlg.destroy()
+
+        def on_disable():
+            settings = updater.get_update_settings()
+            settings["auto_check"] = False
+            updater.save_update_settings(settings)
+            log.info("auto_check disabilitato dall'utente")
+            self.app.status_var.set("Notifiche aggiornamenti disabilitate")
+            dlg.destroy()
+
+        ttk.Button(btn_frame, text="Aggiorna", command=on_update).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(btn_frame, text=f"Salta {tag}", command=on_skip).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Non ricordare", command=on_disable).pack(side=tk.RIGHT)
+
+        # Centra il dialog sulla finestra principale
+        dlg.update_idletasks()
+        w = dlg.winfo_width()
+        h = dlg.winfo_height()
+        x = self.app.root.winfo_x() + (self.app.root.winfo_width() - w) // 2
+        y = self.app.root.winfo_y() + (self.app.root.winfo_height() - h) // 2
+        dlg.geometry(f"+{x}+{y}")
 
     def _do_update(self, download_url):
         app = self.app

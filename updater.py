@@ -11,6 +11,9 @@ import threading
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
+import ssl
+import certifi
+
 from version import VERSION, GITHUB_REPO
 
 log = logging.getLogger("updater")
@@ -19,6 +22,28 @@ if getattr(sys, 'frozen', False):
     APP_DIR = os.path.dirname(sys.executable)
 else:
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+SETTINGS_PATH = os.path.join(APP_DIR, "data", "update_settings.json")
+
+
+def get_update_settings():
+    """Ritorna le preferenze di aggiornamento con defaults."""
+    defaults = {"auto_check": True, "skipped_versions": []}
+    if os.path.exists(SETTINGS_PATH):
+        try:
+            with open(SETTINGS_PATH, "r") as f:
+                saved = json.load(f)
+                defaults.update(saved)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return defaults
+
+
+def save_update_settings(settings):
+    """Salva le preferenze di aggiornamento."""
+    os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
+    with open(SETTINGS_PATH, "w") as f:
+        json.dump(settings, f, indent=2)
 
 
 def _parse_version(v):
@@ -33,11 +58,12 @@ def _parse_version(v):
     return tuple(parts)
 
 
-def check_for_updates():
+def check_for_updates(skip_versions=None):
     """
     Controlla se esiste una versione più recente su GitHub.
     Ritorna (new_version, download_url, release_notes) oppure None.
     Lancia ConnectionError se non riesce a contattare GitHub.
+    Se skip_versions è una lista, versioni in essa vengono ignorate.
     """
     log.info("Controllo aggiornamenti - versione locale: %s, repo: %s", VERSION, GITHUB_REPO)
 
@@ -48,8 +74,9 @@ def check_for_updates():
     url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
     log.info("Richiesta API: %s", url)
     try:
+        ctx = ssl.create_default_context(cafile=certifi.where())
         req = Request(url, headers={"Accept": "application/vnd.github.v3+json"})
-        with urlopen(req, timeout=10) as resp:
+        with urlopen(req, timeout=10, context=ctx) as resp:
             raw = resp.read().decode()
             data = json.loads(raw)
     except (URLError, json.JSONDecodeError, OSError) as e:
@@ -63,6 +90,10 @@ def check_for_updates():
 
     if remote_ver <= local_ver:
         log.info("Nessun aggiornamento disponibile (remota <= locale)")
+        return None
+
+    if skip_versions and tag in skip_versions:
+        log.info("Versione %s nella lista skip, ignorata", tag)
         return None
 
     # Trova l'asset giusto per questa piattaforma
@@ -104,8 +135,9 @@ def download_and_apply_update(download_url, progress_callback=None):
         archive_name = "update.zip" if is_windows else "update.tar.gz"
         archive_path = os.path.join(tmp_dir, archive_name)
 
+        ctx = ssl.create_default_context(cafile=certifi.where())
         req = Request(download_url)
-        with urlopen(req, timeout=120) as resp:
+        with urlopen(req, timeout=120, context=ctx) as resp:
             total = int(resp.headers.get("Content-Length", 0))
             downloaded = 0
             chunk_size = 65536
