@@ -5,8 +5,6 @@ import platform_utils
 
 
 class CategoryDialog(tk.Toplevel):
-    """Dialog to add or rename a category."""
-
     def __init__(self, parent, title="Nuova Categoria", initial_name=""):
         super().__init__(parent)
         self.title(title)
@@ -16,7 +14,6 @@ class CategoryDialog(tk.Toplevel):
 
         frame = ttk.Frame(self, padding=20)
         frame.pack(fill=tk.BOTH, expand=True)
-
         ttk.Label(frame, text="Nome categoria:").pack(anchor=tk.W)
         self.entry = ttk.Entry(frame, width=35)
         self.entry.insert(0, initial_name)
@@ -27,7 +24,6 @@ class CategoryDialog(tk.Toplevel):
         btn_frame.pack(fill=tk.X)
         ttk.Button(btn_frame, text="Annulla", command=self.destroy).pack(side=tk.RIGHT, padx=(5, 0))
         ttk.Button(btn_frame, text="OK", command=self._on_ok).pack(side=tk.RIGHT)
-
         self.bind("<Return>", lambda e: self._on_ok())
         self.bind("<Escape>", lambda e: self.destroy())
         self.transient(parent)
@@ -41,20 +37,16 @@ class CategoryDialog(tk.Toplevel):
 
 
 class NoteDialog(tk.Toplevel):
-    """Dialog to create a new note."""
-
     def __init__(self, parent, categories):
         super().__init__(parent)
         self.title("Nuova Nota")
         self.result = None
         self.resizable(False, False)
         self.grab_set()
-
         self.categories = categories
 
         frame = ttk.Frame(self, padding=20)
         frame.pack(fill=tk.BOTH, expand=True)
-
         ttk.Label(frame, text="Titolo:").pack(anchor=tk.W)
         self.title_entry = ttk.Entry(frame, width=40)
         self.title_entry.pack(pady=(5, 10))
@@ -71,7 +63,6 @@ class NoteDialog(tk.Toplevel):
         btn_frame.pack(fill=tk.X)
         ttk.Button(btn_frame, text="Annulla", command=self.destroy).pack(side=tk.RIGHT, padx=(5, 0))
         ttk.Button(btn_frame, text="Crea", command=self._on_ok).pack(side=tk.RIGHT)
-
         self.bind("<Return>", lambda e: self._on_ok())
         self.bind("<Escape>", lambda e: self.destroy())
         self.transient(parent)
@@ -82,19 +73,15 @@ class NoteDialog(tk.Toplevel):
         if not title:
             messagebox.showwarning("Attenzione", "Inserisci un titolo.", parent=self)
             return
-
         cat_id = None
         idx = self.cat_combo.current()
         if idx > 0:
             cat_id = self.categories[idx - 1]["id"]
-
         self.result = {"title": title, "category_id": cat_id}
         self.destroy()
 
 
 class TagManagerDialog(tk.Toplevel):
-    """Dialog to manage tags for a note."""
-
     def __init__(self, parent, note_id):
         super().__init__(parent)
         self.title("Gestione Tag")
@@ -104,7 +91,6 @@ class TagManagerDialog(tk.Toplevel):
 
         frame = ttk.Frame(self, padding=20)
         frame.pack(fill=tk.BOTH, expand=True)
-
         add_frame = ttk.Frame(frame)
         add_frame.pack(fill=tk.X, pady=(0, 10))
         ttk.Label(add_frame, text="Nuovo tag:").pack(side=tk.LEFT)
@@ -115,14 +101,12 @@ class TagManagerDialog(tk.Toplevel):
         ttk.Label(frame, text="Tag disponibili:").pack(anchor=tk.W)
         self.check_frame = ttk.Frame(frame)
         self.check_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-
         self.tag_vars = {}
         self._load_tags()
 
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(fill=tk.X, pady=(10, 0))
         ttk.Button(btn_frame, text="Chiudi", command=self._on_close).pack(side=tk.RIGHT)
-
         self.bind("<Escape>", lambda e: self._on_close())
         self.transient(parent)
         self.wait_window()
@@ -130,17 +114,14 @@ class TagManagerDialog(tk.Toplevel):
     def _load_tags(self):
         for w in self.check_frame.winfo_children():
             w.destroy()
-
         all_tags = db.get_all_tags()
         note_tags = db.get_note_tags(self.note_id)
         note_tag_ids = {t["id"] for t in note_tags}
-
         self.tag_vars = {}
         for tag in all_tags:
             var = tk.BooleanVar(value=tag["id"] in note_tag_ids)
             self.tag_vars[tag["id"]] = var
             ttk.Checkbutton(self.check_frame, text=tag["name"], variable=var).pack(anchor=tk.W)
-
         if not all_tags:
             ttk.Label(self.check_frame, text="Nessun tag creato.").pack()
 
@@ -158,8 +139,6 @@ class TagManagerDialog(tk.Toplevel):
 
 
 class AttachmentDialog(tk.Toplevel):
-    """Dialog to view and manage attachments for a note."""
-
     def __init__(self, parent, note_id):
         super().__init__(parent)
         self.title("Allegati")
@@ -169,7 +148,6 @@ class AttachmentDialog(tk.Toplevel):
 
         frame = ttk.Frame(self, padding=15)
         frame.pack(fill=tk.BOTH, expand=True)
-
         toolbar = ttk.Frame(frame)
         toolbar.pack(fill=tk.X, pady=(0, 10))
         ttk.Button(toolbar, text="Aggiungi file...", command=self._add_file).pack(side=tk.LEFT)
@@ -178,12 +156,10 @@ class AttachmentDialog(tk.Toplevel):
 
         self.listbox = tk.Listbox(frame, selectmode=tk.SINGLE)
         self.listbox.pack(fill=tk.BOTH, expand=True)
-
         self.attachments = []
         self._load_attachments()
 
         ttk.Button(frame, text="Chiudi", command=self.destroy).pack(pady=(10, 0), anchor=tk.E)
-
         self.bind("<Escape>", lambda e: self.destroy())
         self.transient(parent)
         self.wait_window()
@@ -218,3 +194,204 @@ class AttachmentDialog(tk.Toplevel):
         path = os.path.join(db.ATTACHMENTS_DIR, att["filename"])
         if not platform_utils.open_file(path):
             messagebox.showerror("Errore", "Impossibile aprire il file.", parent=self)
+
+
+class VersionHistoryDialog(tk.Toplevel):
+    """Dialog to view and restore note version history."""
+
+    def __init__(self, parent, note_id):
+        super().__init__(parent)
+        self.title("Cronologia versioni")
+        self.note_id = note_id
+        self.result = None
+        self.geometry("600x450")
+        self.grab_set()
+
+        frame = ttk.Frame(self, padding=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text="Versioni salvate:", font=("Sans", 10, "bold")).pack(anchor=tk.W)
+
+        # Version list
+        list_frame = ttk.Frame(frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        self.version_list = tk.Listbox(list_frame, font=("Sans", 10))
+        scroll = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.version_list.yview)
+        self.version_list.configure(yscrollcommand=scroll.set)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.version_list.pack(fill=tk.BOTH, expand=True)
+        self.version_list.bind("<<ListboxSelect>>", lambda e: self._on_select())
+
+        # Preview
+        ttk.Label(frame, text="Anteprima:").pack(anchor=tk.W, pady=(5, 0))
+        self.preview = tk.Text(frame, height=8, font=("Monospace", 10), state=tk.DISABLED,
+                               wrap=tk.WORD, bg="#f8f8f8")
+        self.preview.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        # Buttons
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill=tk.X)
+        ttk.Button(btn_frame, text="Chiudi", command=self.destroy).pack(side=tk.RIGHT)
+        ttk.Button(btn_frame, text="Ripristina questa versione", command=self._restore).pack(side=tk.RIGHT, padx=5)
+
+        self.versions = db.get_note_versions(note_id)
+        for v in self.versions:
+            date = v["saved_at"][:19].replace("T", " ")
+            title = v["title"][:40]
+            self.version_list.insert(tk.END, f"[{date}]  {title}")
+
+        if not self.versions:
+            self.version_list.insert(tk.END, "Nessuna versione precedente salvata.")
+
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.transient(parent)
+        self.wait_window()
+
+    def _on_select(self):
+        sel = self.version_list.curselection()
+        if not sel or not self.versions:
+            return
+        ver = self.versions[sel[0]]
+        self.preview.config(state=tk.NORMAL)
+        self.preview.delete("1.0", tk.END)
+        self.preview.insert("1.0", ver["content"] or "")
+        self.preview.config(state=tk.DISABLED)
+
+    def _restore(self):
+        sel = self.version_list.curselection()
+        if not sel or not self.versions:
+            return
+        ver = self.versions[sel[0]]
+        if messagebox.askyesno("Ripristina", "Ripristinare questa versione?\nLa versione attuale verrà salvata.", parent=self):
+            # Save current version first
+            note = db.get_note(self.note_id)
+            if note:
+                db.save_version(self.note_id, note["title"], note["content"])
+            db.restore_version(self.note_id, ver["id"])
+            self.result = True
+            self.destroy()
+
+
+class PasswordDialog(tk.Toplevel):
+    """Dialog to enter encryption password."""
+
+    def __init__(self, parent, title="Password", confirm=False):
+        super().__init__(parent)
+        self.title(title)
+        self.result = None
+        self.resizable(False, False)
+        self.grab_set()
+
+        frame = ttk.Frame(self, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text="Password:").pack(anchor=tk.W)
+        self.pw_entry = ttk.Entry(frame, show="*", width=30)
+        self.pw_entry.pack(pady=(5, 10))
+        self.pw_entry.focus_set()
+
+        if confirm:
+            ttk.Label(frame, text="Conferma password:").pack(anchor=tk.W)
+            self.pw_confirm = ttk.Entry(frame, show="*", width=30)
+            self.pw_confirm.pack(pady=(5, 10))
+        else:
+            self.pw_confirm = None
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill=tk.X)
+        ttk.Button(btn_frame, text="Annulla", command=self.destroy).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(btn_frame, text="OK", command=self._on_ok).pack(side=tk.RIGHT)
+
+        self.bind("<Return>", lambda e: self._on_ok())
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.transient(parent)
+        self.wait_window()
+
+    def _on_ok(self):
+        pw = self.pw_entry.get()
+        if not pw:
+            messagebox.showwarning("Attenzione", "Inserisci una password.", parent=self)
+            return
+        if self.pw_confirm is not None:
+            if pw != self.pw_confirm.get():
+                messagebox.showwarning("Attenzione", "Le password non coincidono.", parent=self)
+                return
+        self.result = pw
+        self.destroy()
+
+
+class BackupSettingsDialog(tk.Toplevel):
+    """Dialog to configure backup settings."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Impostazioni Backup")
+        self.resizable(False, False)
+        self.grab_set()
+
+        import backup_utils
+        self.settings = backup_utils.get_settings()
+
+        frame = ttk.Frame(self, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        # Auto backup
+        self.auto_var = tk.BooleanVar(value=self.settings.get("auto_backup", True))
+        ttk.Checkbutton(frame, text="Backup automatico alla chiusura", variable=self.auto_var).pack(anchor=tk.W)
+
+        # Local dir
+        dir_frame = ttk.Frame(frame)
+        dir_frame.pack(fill=tk.X, pady=(10, 5))
+        ttk.Label(dir_frame, text="Cartella backup locale:").pack(anchor=tk.W)
+        self.dir_var = tk.StringVar(value=self.settings.get("local_backup_dir", ""))
+        ttk.Entry(dir_frame, textvariable=self.dir_var, width=40).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(dir_frame, text="...", width=3,
+                   command=self._browse_dir).pack(side=tk.LEFT, padx=5)
+
+        # Max backups
+        max_frame = ttk.Frame(frame)
+        max_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(max_frame, text="Max backup locali:").pack(side=tk.LEFT)
+        self.max_var = tk.IntVar(value=self.settings.get("max_local_backups", 10))
+        ttk.Spinbox(max_frame, from_=1, to=100, textvariable=self.max_var, width=5).pack(side=tk.LEFT, padx=5)
+
+        # Google Drive
+        ttk.Separator(frame).pack(fill=tk.X, pady=10)
+        self.gdrive_var = tk.BooleanVar(value=self.settings.get("gdrive_enabled", False))
+        ttk.Checkbutton(frame, text="Abilita backup Google Drive", variable=self.gdrive_var).pack(anchor=tk.W)
+
+        gd_frame = ttk.Frame(frame)
+        gd_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(gd_frame, text="Folder ID (opzionale):").pack(anchor=tk.W)
+        self.folder_var = tk.StringVar(value=self.settings.get("gdrive_folder_id", ""))
+        ttk.Entry(gd_frame, textvariable=self.folder_var, width=40).pack(fill=tk.X)
+
+        ttk.Label(frame, text="Per Google Drive serve gdrive_credentials.json in data/",
+                  foreground="#888888", font=("Sans", 8)).pack(anchor=tk.W, pady=(5, 0))
+
+        # Buttons
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill=tk.X, pady=(15, 0))
+        ttk.Button(btn_frame, text="Annulla", command=self.destroy).pack(side=tk.RIGHT)
+        ttk.Button(btn_frame, text="Salva", command=self._save).pack(side=tk.RIGHT, padx=5)
+
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.transient(parent)
+        self.wait_window()
+
+    def _browse_dir(self):
+        d = filedialog.askdirectory(parent=self, title="Cartella backup")
+        if d:
+            self.dir_var.set(d)
+
+    def _save(self):
+        import backup_utils
+        self.settings["auto_backup"] = self.auto_var.get()
+        self.settings["local_backup_dir"] = self.dir_var.get()
+        self.settings["max_local_backups"] = self.max_var.get()
+        self.settings["gdrive_enabled"] = self.gdrive_var.get()
+        self.settings["gdrive_folder_id"] = self.folder_var.get()
+        backup_utils.save_settings(self.settings)
+        messagebox.showinfo("Salvato", "Impostazioni backup salvate.", parent=self)
+        self.destroy()

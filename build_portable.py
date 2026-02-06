@@ -56,6 +56,8 @@ def build():
         "--add-data", f"annotator.py{separator}.",
         "--add-data", f"updater.py{separator}.",
         "--add-data", f"version.py{separator}.",
+        "--add-data", f"crypto_utils.py{separator}.",
+        "--add-data", f"backup_utils.py{separator}.",
         # Hidden imports
         "--hidden-import", "PIL",
         "--hidden-import", "PIL.Image",

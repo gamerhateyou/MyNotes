@@ -1,7 +1,7 @@
 import sqlite3
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Portable: tutto relativo alla cartella dell'app
 if getattr(sys, 'frozen', False):
@@ -12,6 +12,7 @@ else:
 DATA_DIR = os.path.join(APP_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "mynotes.db")
 ATTACHMENTS_DIR = os.path.join(DATA_DIR, "attachments")
+BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 
 
 def get_connection():
@@ -24,6 +25,7 @@ def get_connection():
 def init_db():
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
+    os.makedirs(BACKUP_DIR, exist_ok=True)
     conn = get_connection()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS categories (
@@ -36,6 +38,11 @@ def init_db():
             title TEXT NOT NULL,
             content TEXT DEFAULT '',
             category_id INTEGER,
+            is_pinned INTEGER DEFAULT 0,
+            is_favorite INTEGER DEFAULT 0,
+            is_deleted INTEGER DEFAULT 0,
+            deleted_at TEXT,
+            is_encrypted INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
@@ -62,9 +69,37 @@ def init_db():
             added_at TEXT NOT NULL,
             FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS note_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            note_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT DEFAULT '',
+            saved_at TEXT NOT NULL,
+            FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE
+        );
     """)
+    # Migration: add columns if missing (for existing databases)
+    _migrate(conn)
     conn.commit()
     conn.close()
+    # Auto-purge old trash
+    purge_trash(30)
+
+
+def _migrate(conn):
+    """Add new columns to existing databases."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(notes)").fetchall()}
+    migrations = [
+        ("is_pinned", "INTEGER DEFAULT 0"),
+        ("is_favorite", "INTEGER DEFAULT 0"),
+        ("is_deleted", "INTEGER DEFAULT 0"),
+        ("deleted_at", "TEXT"),
+        ("is_encrypted", "INTEGER DEFAULT 0"),
+    ]
+    for col, col_type in migrations:
+        if col not in existing:
+            conn.execute(f"ALTER TABLE notes ADD COLUMN {col} {col_type}")
 
 
 # --- Categories ---
@@ -107,12 +142,21 @@ def delete_category(cat_id):
 
 # --- Notes ---
 
-def get_all_notes(category_id=None, tag_id=None, search_query=None):
+def get_all_notes(category_id=None, tag_id=None, search_query=None,
+                  show_deleted=False, favorites_only=False):
     conn = get_connection()
     query = "SELECT DISTINCT n.* FROM notes n"
     joins = []
     conditions = []
     params = []
+
+    if show_deleted:
+        conditions.append("n.is_deleted = 1")
+    else:
+        conditions.append("n.is_deleted = 0")
+
+    if favorites_only:
+        conditions.append("n.is_favorite = 1")
 
     if tag_id is not None:
         joins.append("JOIN note_tags nt ON n.id = nt.note_id")
@@ -133,7 +177,8 @@ def get_all_notes(category_id=None, tag_id=None, search_query=None):
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
 
-    query += " ORDER BY n.updated_at DESC"
+    # Pinned first, then by date
+    query += " ORDER BY n.is_pinned DESC, n.updated_at DESC"
     rows = conn.execute(query, params).fetchall()
     conn.close()
     return rows
@@ -179,7 +224,47 @@ def update_note(note_id, title=None, content=None, category_id=None):
     conn.close()
 
 
-def delete_note(note_id):
+def toggle_pin(note_id):
+    conn = get_connection()
+    note = conn.execute("SELECT is_pinned FROM notes WHERE id = ?", (note_id,)).fetchone()
+    if note:
+        new_val = 0 if note["is_pinned"] else 1
+        conn.execute("UPDATE notes SET is_pinned = ? WHERE id = ?", (new_val, note_id))
+        conn.commit()
+    conn.close()
+
+
+def toggle_favorite(note_id):
+    conn = get_connection()
+    note = conn.execute("SELECT is_favorite FROM notes WHERE id = ?", (note_id,)).fetchone()
+    if note:
+        new_val = 0 if note["is_favorite"] else 1
+        conn.execute("UPDATE notes SET is_favorite = ? WHERE id = ?", (new_val, note_id))
+        conn.commit()
+    conn.close()
+
+
+# --- Trash ---
+
+def soft_delete_note(note_id):
+    """Move note to trash."""
+    now = datetime.now().isoformat()
+    conn = get_connection()
+    conn.execute("UPDATE notes SET is_deleted = 1, deleted_at = ? WHERE id = ?", (now, note_id))
+    conn.commit()
+    conn.close()
+
+
+def restore_note(note_id):
+    """Restore note from trash."""
+    conn = get_connection()
+    conn.execute("UPDATE notes SET is_deleted = 0, deleted_at = NULL WHERE id = ?", (note_id,))
+    conn.commit()
+    conn.close()
+
+
+def permanent_delete_note(note_id):
+    """Permanently delete note and its attachments."""
     conn = get_connection()
     attachments = conn.execute("SELECT filename FROM attachments WHERE note_id = ?", (note_id,)).fetchall()
     for att in attachments:
@@ -187,6 +272,77 @@ def delete_note(note_id):
         if os.path.exists(path):
             os.remove(path)
     conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+    conn.commit()
+    conn.close()
+
+
+def purge_trash(days=30):
+    """Permanently delete notes in trash older than N days."""
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    conn = get_connection()
+    old_notes = conn.execute(
+        "SELECT id FROM notes WHERE is_deleted = 1 AND deleted_at < ?", (cutoff,)
+    ).fetchall()
+    conn.close()
+    for n in old_notes:
+        permanent_delete_note(n["id"])
+
+
+def get_trash_count():
+    conn = get_connection()
+    row = conn.execute("SELECT COUNT(*) as c FROM notes WHERE is_deleted = 1").fetchone()
+    conn.close()
+    return row["c"]
+
+
+# --- Note Versions ---
+
+def save_version(note_id, title, content):
+    """Save a snapshot of the note."""
+    now = datetime.now().isoformat()
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO note_versions (note_id, title, content, saved_at) VALUES (?, ?, ?, ?)",
+        (note_id, title, content, now),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_note_versions(note_id):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM note_versions WHERE note_id = ? ORDER BY saved_at DESC",
+        (note_id,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def restore_version(note_id, version_id):
+    """Restore a note from a saved version."""
+    conn = get_connection()
+    ver = conn.execute("SELECT * FROM note_versions WHERE id = ?", (version_id,)).fetchone()
+    if ver:
+        now = datetime.now().isoformat()
+        conn.execute(
+            "UPDATE notes SET title = ?, content = ?, updated_at = ? WHERE id = ?",
+            (ver["title"], ver["content"], now, note_id),
+        )
+        conn.commit()
+    conn.close()
+
+
+# --- Encryption helpers ---
+
+def set_note_encrypted(note_id, encrypted_content, is_encrypted=True):
+    """Store encrypted content."""
+    now = datetime.now().isoformat()
+    conn = get_connection()
+    conn.execute(
+        "UPDATE notes SET content = ?, is_encrypted = ?, updated_at = ? WHERE id = ?",
+        (encrypted_content, 1 if is_encrypted else 0, now, note_id),
+    )
     conn.commit()
     conn.close()
 
@@ -281,3 +437,31 @@ def delete_attachment(att_id):
         conn.execute("DELETE FROM attachments WHERE id = ?", (att_id,))
         conn.commit()
     conn.close()
+
+
+# --- Backup ---
+
+def create_backup(dest_dir=None):
+    """Create a backup of the database. Returns backup file path."""
+    import shutil
+    if dest_dir is None:
+        dest_dir = BACKUP_DIR
+    os.makedirs(dest_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_name = f"mynotes_backup_{timestamp}.db"
+    backup_path = os.path.join(dest_dir, backup_name)
+    shutil.copy2(DB_PATH, backup_path)
+    return backup_path
+
+
+def get_backups():
+    """List available backups."""
+    if not os.path.exists(BACKUP_DIR):
+        return []
+    backups = []
+    for f in sorted(os.listdir(BACKUP_DIR), reverse=True):
+        if f.startswith("mynotes_backup_") and f.endswith(".db"):
+            path = os.path.join(BACKUP_DIR, f)
+            size = os.path.getsize(path)
+            backups.append({"filename": f, "path": path, "size": size})
+    return backups
