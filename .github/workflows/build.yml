@@ -88,6 +88,8 @@ jobs:
             - **Windows**: Scarica `MyNotes-Windows.zip`, estrai ed esegui `MyNotes.exe`
             - **Linux**: Scarica `MyNotes-Linux.tar.gz`, estrai ed esegui `./MyNotes`
 
+            **IMPORTANTE:** Avvia direttamente l'eseguibile `MyNotes` (o `MyNotes.exe` su Windows), NON i file `.sh` o `.bat`.
+
             Entrambi sono portabili: metti la cartella su una chiavetta USB e funziona ovunque.
           files: |
             MyNotes-Linux/MyNotes-Linux.tar.gz

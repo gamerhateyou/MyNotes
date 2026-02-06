@@ -15,7 +15,6 @@ Copia quella cartella su una chiavetta USB e funziona ovunque.
 import subprocess
 import sys
 import os
-import shutil
 import platform
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -93,12 +92,6 @@ def build():
     data_dir = os.path.join(dist_app, "data")
     att_dir = os.path.join(data_dir, "attachments")
     os.makedirs(att_dir, exist_ok=True)
-
-    # Copy launchers
-    for f in ["run.sh", "run.bat"]:
-        src = os.path.join(SCRIPT_DIR, f)
-        if os.path.exists(src):
-            shutil.copy2(src, dist_app)
 
     print()
     print("=" * 50)
