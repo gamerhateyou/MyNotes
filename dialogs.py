@@ -1,7 +1,9 @@
+import os
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import database as db
 import platform_utils
+import audio_utils
 
 
 class CategoryDialog(tk.Toplevel):
@@ -318,6 +320,163 @@ class PasswordDialog(tk.Toplevel):
                 messagebox.showwarning("Attenzione", "Le password non coincidono.", parent=self)
                 return
         self.result = pw
+        self.destroy()
+
+
+class AudioRecordDialog(tk.Toplevel):
+    """Dialog per registrazione audio o descrizione per import audio."""
+
+    def __init__(self, parent, mode="record", audio_path=None):
+        super().__init__(parent)
+        self.mode = mode
+        self.audio_path = audio_path
+        self.result = None
+        self._timer_id = None
+        self._elapsed = 0
+        self._recording = False
+        self._temp_path = None
+        self.resizable(False, False)
+        self.grab_set()
+
+        if mode == "record":
+            self.title("Registra Audio")
+            self._build_record_ui()
+        else:
+            self.title("Descrizione Audio")
+            self._build_describe_ui()
+
+        self.bind("<Escape>", lambda e: self._on_cancel())
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        self.transient(parent)
+        self.wait_window()
+
+    def _build_record_ui(self):
+        frame = ttk.Frame(self, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text="Descrizione (opzionale):").pack(anchor=tk.W)
+        self.desc_entry = ttk.Entry(frame, width=40)
+        self.desc_entry.pack(pady=(5, 10))
+        self.desc_entry.focus_set()
+
+        # Timer
+        self.timer_label = ttk.Label(frame, text="00:00", font=("Sans", 18, "bold"))
+        self.timer_label.pack(pady=10)
+
+        # Status
+        self.status_label = ttk.Label(frame, text="Pronto per registrare", foreground="#888888")
+        self.status_label.pack(pady=(0, 10))
+
+        # Record/Stop buttons
+        rec_frame = ttk.Frame(frame)
+        rec_frame.pack(fill=tk.X, pady=5)
+        self.rec_btn = ttk.Button(rec_frame, text="Registra", command=self._toggle_record)
+        self.rec_btn.pack(side=tk.LEFT, padx=2)
+        self.preview_btn = ttk.Button(rec_frame, text="Anteprima", command=self._preview, state=tk.DISABLED)
+        self.preview_btn.pack(side=tk.LEFT, padx=2)
+
+        # Check sounddevice availability
+        if not audio_utils.is_available():
+            self.rec_btn.config(state=tk.DISABLED)
+            self.status_label.config(
+                text="Libreria 'sounddevice' non installata.\npip install sounddevice",
+                foreground="#cc0000"
+            )
+
+        ttk.Separator(frame).pack(fill=tk.X, pady=10)
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill=tk.X)
+        ttk.Button(btn_frame, text="Annulla", command=self._on_cancel).pack(side=tk.RIGHT, padx=(5, 0))
+        self.save_btn = ttk.Button(btn_frame, text="Salva", command=self._on_save, state=tk.DISABLED)
+        self.save_btn.pack(side=tk.RIGHT)
+
+    def _build_describe_ui(self):
+        frame = ttk.Frame(self, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        filename = os.path.basename(self.audio_path) if self.audio_path else ""
+        ttk.Label(frame, text=f"File: {filename}").pack(anchor=tk.W, pady=(0, 10))
+
+        ttk.Label(frame, text="Descrizione (opzionale):").pack(anchor=tk.W)
+        self.desc_entry = ttk.Entry(frame, width=40)
+        self.desc_entry.pack(pady=(5, 15))
+        self.desc_entry.focus_set()
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill=tk.X)
+        ttk.Button(btn_frame, text="Annulla", command=self._on_cancel).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(btn_frame, text="OK", command=self._on_save).pack(side=tk.RIGHT)
+        self.bind("<Return>", lambda e: self._on_save())
+
+    def _toggle_record(self):
+        if not self._recording:
+            self._start_recording()
+        else:
+            self._stop_recording()
+
+    def _start_recording(self):
+        self._temp_path = audio_utils.get_temp_wav_path()
+        try:
+            audio_utils.record_audio()
+        except Exception as e:
+            messagebox.showerror("Errore", f"Impossibile avviare la registrazione:\n{e}", parent=self)
+            return
+        self._recording = True
+        self._elapsed = 0
+        self.rec_btn.config(text="Stop")
+        self.preview_btn.config(state=tk.DISABLED)
+        self.save_btn.config(state=tk.DISABLED)
+        self.status_label.config(text="Registrazione in corso...", foreground="#cc0000")
+        self._update_timer()
+
+    def _stop_recording(self):
+        if self._timer_id:
+            self.after_cancel(self._timer_id)
+            self._timer_id = None
+        self._recording = False
+        audio_utils.stop_recording(self._temp_path)
+        self.rec_btn.config(text="Registra")
+        self.preview_btn.config(state=tk.NORMAL)
+        self.save_btn.config(state=tk.NORMAL)
+        self.status_label.config(text="Registrazione completata", foreground="#228B22")
+
+    def _update_timer(self):
+        if not self._recording:
+            return
+        self._elapsed += 1
+        mins, secs = divmod(self._elapsed, 60)
+        self.timer_label.config(text=f"{mins:02d}:{secs:02d}")
+        self._timer_id = self.after(1000, self._update_timer)
+
+    def _preview(self):
+        if self._temp_path and os.path.exists(self._temp_path):
+            platform_utils.open_file(self._temp_path)
+
+    def _on_save(self):
+        if self._recording:
+            self._stop_recording()
+
+        desc = self.desc_entry.get().strip()
+
+        if self.mode == "record":
+            if not self._temp_path or not os.path.exists(self._temp_path):
+                messagebox.showwarning("Attenzione", "Nessuna registrazione effettuata.", parent=self)
+                return
+            self.result = {"path": self._temp_path, "description": desc}
+        else:
+            self.result = {"path": self.audio_path, "description": desc}
+        self.destroy()
+
+    def _on_cancel(self):
+        if self._recording:
+            self._stop_recording()
+        # Cleanup temp file on cancel
+        if self.mode == "record" and self._temp_path and os.path.exists(self._temp_path):
+            try:
+                os.remove(self._temp_path)
+            except OSError:
+                pass
+        self.result = None
         self.destroy()
 
 

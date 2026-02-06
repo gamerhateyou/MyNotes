@@ -64,6 +64,7 @@ def build():
         "--hidden-import", "version",
         "--hidden-import", "crypto_utils",
         "--hidden-import", "backup_utils",
+        "--hidden-import", "audio_utils",
         # PIL
         "--hidden-import", "PIL",
         "--hidden-import", "PIL.Image",
@@ -76,6 +77,10 @@ def build():
         "--hidden-import", "google_auth_oauthlib.flow",
         "--hidden-import", "googleapiclient.discovery",
         "--hidden-import", "googleapiclient.http",
+        # Audio
+        "--hidden-import", "sounddevice",
+        "--hidden-import", "numpy",
+        "--hidden-import", "_sounddevice_data",
         # PDF export
         "--hidden-import", "reportlab",
         "--hidden-import", "reportlab.lib.pagesizes",

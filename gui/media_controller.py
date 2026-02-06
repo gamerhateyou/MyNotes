@@ -1,4 +1,4 @@
-"""Screenshots, image gallery, annotations."""
+"""Screenshots, image gallery, annotations, audio."""
 
 import os
 import tkinter as tk
@@ -7,8 +7,10 @@ from datetime import datetime
 import database as db
 import image_utils
 import platform_utils
+import audio_utils
 from gui.constants import UI_FONT
 from annotator import AnnotationTool
+from dialogs import AudioRecordDialog
 
 
 class MediaController:
@@ -143,3 +145,52 @@ class MediaController:
             db.add_attachment(app.current_note_id, path)
             app.notes_ctl.display_note(app.current_note_id)
             app.status_var.set(f"Immagine aggiunta")
+
+    # --- Audio ---
+
+    def record_audio(self):
+        app = self.app
+        if app.current_note_id is None:
+            messagebox.showinfo("Info", "Crea o seleziona una nota prima.")
+            return
+
+        dlg = AudioRecordDialog(app.root, mode="record")
+        if dlg.result is None:
+            return
+
+        temp_path = dlg.result["path"]
+        description = dlg.result["description"]
+
+        att_filename = db.add_attachment(app.current_note_id, temp_path)
+        # Remove temp file
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+
+        app.notes_ctl.insert_audio_marker(att_filename, description)
+        app.notes_ctl.display_note(app.current_note_id)
+        app.status_var.set("Audio registrato")
+
+    def import_audio(self):
+        app = self.app
+        if app.current_note_id is None:
+            messagebox.showinfo("Info", "Crea o seleziona una nota prima.")
+            return
+
+        path = filedialog.askopenfilename(
+            parent=app.root, title="Seleziona file audio",
+            filetypes=[("Audio", "*.mp3 *.wav *.ogg *.m4a *.flac *.aac *.wma"), ("Tutti", "*.*")])
+        if not path:
+            return
+
+        dlg = AudioRecordDialog(app.root, mode="describe", audio_path=path)
+        if dlg.result is None:
+            return
+
+        description = dlg.result["description"]
+        att_filename = db.add_attachment(app.current_note_id, path)
+
+        app.notes_ctl.insert_audio_marker(att_filename, description)
+        app.notes_ctl.display_note(app.current_note_id)
+        app.status_var.set("Audio importato")

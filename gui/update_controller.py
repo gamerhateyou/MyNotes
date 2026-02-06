@@ -34,16 +34,18 @@ class UpdateController:
 
     def _handle_error(self, error_msg):
         self.app.status_var.set("Errore controllo aggiornamenti")
-        messagebox.showerror("Errore", f"Impossibile verificare aggiornamenti.\n\n{error_msg}")
+        messagebox.showerror("Errore", f"Impossibile verificare aggiornamenti.\n\n{error_msg}",
+                            parent=self.app.root)
 
     def _handle_result(self, result):
         if result is None:
             self.app.status_var.set("Nessun aggiornamento")
-            messagebox.showinfo("Aggiornamenti", f"MyNotes v{VERSION} e' aggiornato!")
+            messagebox.showinfo("Aggiornamenti", f"MyNotes v{VERSION} e' aggiornato!",
+                                parent=self.app.root)
             return
         tag, url, notes = result
         msg = f"Nuova versione: {tag}\n(Attuale: v{VERSION})\n\nAggiornare?"
-        if messagebox.askyesno("Aggiornamento", msg):
+        if messagebox.askyesno("Aggiornamento", msg, parent=self.app.root):
             self._do_update(url)
 
     def _do_update(self, download_url):
@@ -70,12 +72,13 @@ class UpdateController:
             def finish():
                 progress_win.destroy()
                 if success:
-                    if messagebox.askyesno("Completato", "Aggiornamento applicato!\nRiavviare ora?"):
+                    if messagebox.askyesno("Completato", "Aggiornamento applicato!\nRiavviare ora?",
+                                          parent=app.root):
                         import subprocess
                         subprocess.Popen(updater.get_restart_command())
                         app.root.quit()
                 else:
-                    messagebox.showerror("Errore", "Aggiornamento fallito.")
+                    messagebox.showerror("Errore", "Aggiornamento fallito.", parent=app.root)
             app.root.after(0, finish)
 
         threading.Thread(target=do_download, daemon=True).start()

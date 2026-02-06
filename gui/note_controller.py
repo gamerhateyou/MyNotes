@@ -1,10 +1,14 @@
-"""Note CRUD, categories, tags, encryption, checklist."""
+"""Note CRUD, categories, tags, encryption, checklist, audio markers."""
 
+import os
+import re
 import tkinter as tk
 from tkinter import messagebox
 from datetime import datetime
 import database as db
 import crypto_utils
+import platform_utils
+import audio_utils
 from gui.constants import AUTO_SAVE_MS, VERSION_SAVE_EVERY
 from dialogs import (CategoryDialog, NoteDialog, TagManagerDialog, AttachmentDialog,
                      VersionHistoryDialog, PasswordDialog)
@@ -149,6 +153,7 @@ class NoteController:
             app.text_editor.config(state=tk.NORMAL)
             app.text_editor.insert("1.0", note["content"] or "")
             self._apply_checklist_formatting()
+            self._apply_audio_formatting()
 
         created = note["created_at"][:16].replace("T", " ")
         updated = note["updated_at"][:16].replace("T", " ")
@@ -267,6 +272,9 @@ class NoteController:
             menu.add_command(label="Allegati...", command=self.manage_attachments)
             menu.add_command(label="Cronologia versioni...", command=self.show_versions)
             menu.add_separator()
+            menu.add_command(label="Registra audio...", command=lambda: app.media_ctl.record_audio())
+            menu.add_command(label="Importa audio...", command=lambda: app.media_ctl.import_audio())
+            menu.add_separator()
             if note["is_encrypted"]:
                 menu.add_command(label="Decripta...", command=self.decrypt_note)
             else:
@@ -319,12 +327,50 @@ class NoteController:
             elif line.strip().startswith("[ ]"):
                 editor.tag_add("checkbox_open", f"{i}.0", f"{i}.end")
 
+    def _apply_audio_formatting(self):
+        editor = self.app.text_editor
+        editor.tag_remove("audio_marker", "1.0", tk.END)
+
+        content = editor.get("1.0", tk.END)
+        pattern = re.compile(r"\[♪:[^\]]+\]")
+        for i, line in enumerate(content.split("\n"), 1):
+            for m in pattern.finditer(line):
+                start_col = m.start()
+                end_col = m.end()
+                editor.tag_add("audio_marker", f"{i}.{start_col}", f"{i}.{end_col}")
+
+    def insert_audio_marker(self, att_filename, description):
+        """Inserisce un marker audio alla posizione del cursore."""
+        if self.app.current_note_id is None:
+            return
+        desc = description or "audio"
+        marker = f"\n[♪:{att_filename} {desc}]\n"
+        self.app.text_editor.insert(tk.INSERT, marker)
+        self._apply_audio_formatting()
+        self._apply_checklist_formatting()
+        self.schedule_save()
+
     def on_text_click(self, event):
         editor = self.app.text_editor
         index = editor.index(f"@{event.x},{event.y}")
         line_num = int(index.split(".")[0])
         line = editor.get(f"{line_num}.0", f"{line_num}.end")
         stripped = line.lstrip()
+
+        # Audio marker click
+        audio_match = re.search(r"\[♪:(\S+)", line)
+        if audio_match:
+            col = int(index.split(".")[1])
+            # Find the full marker span
+            marker_match = re.search(r"\[♪:[^\]]+\]", line)
+            if marker_match and marker_match.start() <= col <= marker_match.end():
+                filename = audio_match.group(1)
+                path = os.path.join(db.ATTACHMENTS_DIR, filename)
+                if os.path.exists(path):
+                    platform_utils.open_file(path)
+                else:
+                    messagebox.showwarning("Audio", f"File non trovato:\n{filename}")
+                return
 
         if stripped.startswith("[ ]"):
             offset = len(line) - len(stripped)

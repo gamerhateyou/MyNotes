@@ -22,6 +22,7 @@ def build_toolbar(app):
     ttk.Button(toolbar, text="Screenshot", command=lambda: app.media_ctl.take_screenshot()).pack(side=tk.LEFT, padx=2)
     ttk.Button(toolbar, text="Immagine", command=lambda: app.media_ctl.insert_image()).pack(side=tk.LEFT, padx=2)
     ttk.Button(toolbar, text="Checklist", command=lambda: app.notes_ctl.insert_checklist()).pack(side=tk.LEFT, padx=2)
+    ttk.Button(toolbar, text="Audio", command=lambda: app.media_ctl.record_audio()).pack(side=tk.LEFT, padx=2)
 
     ttk.Label(toolbar, text="  Cerca:").pack(side=tk.LEFT, padx=(15, 5))
     app.search_var = tk.StringVar()
@@ -106,6 +107,7 @@ def build_main_layout(app):
     # Checklist tags
     app.text_editor.tag_configure("checkbox_done", overstrike=True, foreground="#888888")
     app.text_editor.tag_configure("checkbox_open", foreground="#333333")
+    app.text_editor.tag_configure("audio_marker", foreground="#1a73e8", background="#e8f0fe")
 
     # Gallery
     gallery_frame = ttk.Frame(editor_pane)
