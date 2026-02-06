@@ -85,6 +85,10 @@ def build():
         # SSL certificates
         "--hidden-import", "certifi",
         "--collect-data", "certifi",
+        # Stdlib dynamic imports (inside functions, PyInstaller may miss)
+        "--hidden-import", "tarfile",
+        "--hidden-import", "zipfile",
+        "--hidden-import", "wave",
         # PDF export
         "--hidden-import", "reportlab",
         "--hidden-import", "reportlab.lib.pagesizes",
