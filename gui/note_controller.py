@@ -203,10 +203,12 @@ class NoteController:
         if not title:
             return
 
-        app._version_counter += 1
-        if app._version_counter >= VERSION_SAVE_EVERY:
-            app._version_counter = 0
-            db.save_version(app.current_note_id, title, content)
+        # Don't save plaintext versions for encrypted notes
+        if not note["is_encrypted"]:
+            app._version_counter += 1
+            if app._version_counter >= VERSION_SAVE_EVERY:
+                app._version_counter = 0
+                db.save_version(app.current_note_id, title, content)
 
         if note["is_encrypted"] and app.current_note_id in app._decrypted_cache:
             app._decrypted_cache[app.current_note_id] = content
@@ -384,9 +386,13 @@ class NoteController:
         if app.current_note_id is None:
             return
         note = db.get_note(app.current_note_id)
-        if note and not note["is_encrypted"]:
-            content = app.text_editor.get("1.0", tk.END).rstrip("\n")
-            db.save_version(app.current_note_id, note["title"], content)
+        if not note:
+            return
+        if note["is_encrypted"]:
+            messagebox.showinfo("Info", "La cronologia versioni non e' disponibile per le note criptate.")
+            return
+        content = app.text_editor.get("1.0", tk.END).rstrip("\n")
+        db.save_version(app.current_note_id, note["title"], content)
         dlg = VersionHistoryDialog(app.root, app.current_note_id)
         if dlg.result:
             self.display_note(app.current_note_id)
@@ -405,9 +411,10 @@ class NoteController:
         dlg = PasswordDialog(app.root, title="Cripta nota", confirm=True)
         if dlg.result:
             content = app.text_editor.get("1.0", tk.END).rstrip("\n")
-            db.save_version(app.current_note_id, note["title"], content)
             encrypted = crypto_utils.encrypt(content, dlg.result)
             db.set_note_encrypted(app.current_note_id, encrypted, True)
+            # Remove all plaintext versions for security
+            db.delete_note_versions(app.current_note_id)
             app._decrypted_cache.pop(app.current_note_id, None)
             self.display_note(app.current_note_id)
             app.status_var.set("Nota criptata")

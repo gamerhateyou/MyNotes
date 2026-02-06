@@ -305,6 +305,12 @@ def restore_version(note_id, version_id):
             conn.commit()
 
 
+def delete_note_versions(note_id):
+    with _connect() as conn:
+        conn.execute("DELETE FROM note_versions WHERE note_id = ?", (note_id,))
+        conn.commit()
+
+
 # --- Encryption helpers ---
 
 def set_note_encrypted(note_id, encrypted_content, is_encrypted=True):
