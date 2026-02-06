@@ -322,7 +322,7 @@ class PasswordDialog(tk.Toplevel):
 
 
 class BackupSettingsDialog(tk.Toplevel):
-    """Dialog to configure backup settings."""
+    """Dialog to configure backup settings with integrated Google Drive auth."""
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -331,16 +331,18 @@ class BackupSettingsDialog(tk.Toplevel):
         self.grab_set()
 
         import backup_utils
+        self.backup_utils = backup_utils
         self.settings = backup_utils.get_settings()
 
         frame = ttk.Frame(self, padding=20)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        # Auto backup
-        self.auto_var = tk.BooleanVar(value=self.settings.get("auto_backup", True))
-        ttk.Checkbutton(frame, text="Backup automatico alla chiusura", variable=self.auto_var).pack(anchor=tk.W)
+        # --- Local Backup ---
+        ttk.Label(frame, text="Backup Locale", font=("Sans", 10, "bold")).pack(anchor=tk.W)
 
-        # Local dir
+        self.auto_var = tk.BooleanVar(value=self.settings.get("auto_backup", True))
+        ttk.Checkbutton(frame, text="Backup automatico alla chiusura", variable=self.auto_var).pack(anchor=tk.W, pady=(5, 0))
+
         dir_frame = ttk.Frame(frame)
         dir_frame.pack(fill=tk.X, pady=(10, 5))
         ttk.Label(dir_frame, text="Cartella backup locale:").pack(anchor=tk.W)
@@ -349,26 +351,47 @@ class BackupSettingsDialog(tk.Toplevel):
         ttk.Button(dir_frame, text="...", width=3,
                    command=self._browse_dir).pack(side=tk.LEFT, padx=5)
 
-        # Max backups
         max_frame = ttk.Frame(frame)
         max_frame.pack(fill=tk.X, pady=5)
         ttk.Label(max_frame, text="Max backup locali:").pack(side=tk.LEFT)
         self.max_var = tk.IntVar(value=self.settings.get("max_local_backups", 10))
         ttk.Spinbox(max_frame, from_=1, to=100, textvariable=self.max_var, width=5).pack(side=tk.LEFT, padx=5)
 
-        # Google Drive
+        # --- Google Drive ---
         ttk.Separator(frame).pack(fill=tk.X, pady=10)
+        ttk.Label(frame, text="Google Drive", font=("Sans", 10, "bold")).pack(anchor=tk.W)
+
+        # Connection status
+        status_frame = ttk.Frame(frame)
+        status_frame.pack(fill=tk.X, pady=(5, 5))
+
+        self.status_label = ttk.Label(status_frame, text="")
+        self.status_label.pack(side=tk.LEFT)
+
+        self.auth_btn = ttk.Button(status_frame, text="", command=self._toggle_gdrive_auth)
+        self.auth_btn.pack(side=tk.RIGHT)
+
+        self._update_gdrive_status()
+
+        # Enable checkbox
         self.gdrive_var = tk.BooleanVar(value=self.settings.get("gdrive_enabled", False))
-        ttk.Checkbutton(frame, text="Abilita backup Google Drive", variable=self.gdrive_var).pack(anchor=tk.W)
+        self.gdrive_check = ttk.Checkbutton(frame, text="Abilita backup su Google Drive",
+                                            variable=self.gdrive_var)
+        self.gdrive_check.pack(anchor=tk.W, pady=(5, 0))
 
-        gd_frame = ttk.Frame(frame)
-        gd_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(gd_frame, text="Folder ID (opzionale):").pack(anchor=tk.W)
-        self.folder_var = tk.StringVar(value=self.settings.get("gdrive_folder_id", ""))
-        ttk.Entry(gd_frame, textvariable=self.folder_var, width=40).pack(fill=tk.X)
+        # Folder name
+        folder_frame = ttk.Frame(frame)
+        folder_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(folder_frame, text="Nome cartella su Drive:").pack(anchor=tk.W)
+        self.folder_var = tk.StringVar(value=self.settings.get("gdrive_folder_name", "MyNotes Backup"))
+        ttk.Entry(folder_frame, textvariable=self.folder_var, width=40).pack(fill=tk.X)
 
-        ttk.Label(frame, text="Per Google Drive serve gdrive_credentials.json in data/",
-                  foreground="#888888", font=("Sans", 8)).pack(anchor=tk.W, pady=(5, 0))
+        # Library check
+        if not backup_utils.is_gdrive_available():
+            ttk.Label(frame, text="Librerie Google non installate. Esegui:\n"
+                                  "pip install google-api-python-client google-auth-oauthlib",
+                      foreground="#cc6600", font=("Sans", 8), wraplength=350,
+                      justify=tk.LEFT).pack(anchor=tk.W, pady=(5, 0))
 
         # Buttons
         btn_frame = ttk.Frame(frame)
@@ -380,18 +403,42 @@ class BackupSettingsDialog(tk.Toplevel):
         self.transient(parent)
         self.wait_window()
 
+    def _update_gdrive_status(self):
+        if self.backup_utils.is_gdrive_configured():
+            self.status_label.config(text="Connesso a Google Drive", foreground="#228B22")
+            self.auth_btn.config(text="Disconnetti")
+        else:
+            self.status_label.config(text="Non connesso", foreground="#888888")
+            self.auth_btn.config(text="Accedi con Google")
+
+    def _toggle_gdrive_auth(self):
+        if self.backup_utils.is_gdrive_configured():
+            if messagebox.askyesno("Disconnetti", "Rimuovere l'autorizzazione Google Drive?", parent=self):
+                self.backup_utils.gdrive_disconnect()
+                self.gdrive_var.set(False)
+                self._update_gdrive_status()
+        else:
+            self.auth_btn.config(state=tk.DISABLED, text="Autorizzazione in corso...")
+            self.update_idletasks()
+            success, msg = self.backup_utils.gdrive_authorize()
+            self.auth_btn.config(state=tk.NORMAL)
+            if success:
+                messagebox.showinfo("Google Drive", msg, parent=self)
+            else:
+                messagebox.showerror("Errore", msg, parent=self)
+            self._update_gdrive_status()
+
     def _browse_dir(self):
         d = filedialog.askdirectory(parent=self, title="Cartella backup")
         if d:
             self.dir_var.set(d)
 
     def _save(self):
-        import backup_utils
         self.settings["auto_backup"] = self.auto_var.get()
         self.settings["local_backup_dir"] = self.dir_var.get()
         self.settings["max_local_backups"] = self.max_var.get()
         self.settings["gdrive_enabled"] = self.gdrive_var.get()
-        self.settings["gdrive_folder_id"] = self.folder_var.get()
-        backup_utils.save_settings(self.settings)
+        self.settings["gdrive_folder_name"] = self.folder_var.get()
+        self.backup_utils.save_settings(self.settings)
         messagebox.showinfo("Salvato", "Impostazioni backup salvate.", parent=self)
         self.destroy()

@@ -1,4 +1,4 @@
-"""Sistema di backup locale e Google Drive."""
+"""Sistema di backup locale e Google Drive - tutto configurabile da GUI."""
 
 import os
 import json
@@ -7,17 +7,30 @@ import threading
 from datetime import datetime
 import database as db
 
-
 SETTINGS_PATH = os.path.join(db.DATA_DIR, "backup_settings.json")
+TOKEN_PATH = os.path.join(db.DATA_DIR, "gdrive_token.json")
+
+# OAuth credentials integrati nell'app.
+# Il developer li genera UNA volta su Google Cloud Console e li mette qui.
+# Gli utenti NON devono fare nulla - cliccano solo "Accedi con Google".
+OAUTH_CLIENT_CONFIG = {
+    "installed": {
+        "client_id": "",
+        "client_secret": "",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "redirect_uris": ["http://localhost"],
+    }
+}
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 
 def get_settings():
-    """Load backup settings."""
     defaults = {
         "auto_backup": True,
         "local_backup_dir": db.BACKUP_DIR,
         "gdrive_enabled": False,
-        "gdrive_folder_id": "",
+        "gdrive_folder_name": "MyNotes Backup",
         "max_local_backups": 10,
     }
     if os.path.exists(SETTINGS_PATH):
@@ -31,25 +44,113 @@ def get_settings():
 
 
 def save_settings(settings):
-    """Save backup settings."""
     os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
     with open(SETTINGS_PATH, "w") as f:
         json.dump(settings, f, indent=2)
 
 
+def is_gdrive_configured():
+    """Check if Google Drive is authorized (token exists)."""
+    return os.path.exists(TOKEN_PATH)
+
+
+def is_gdrive_available():
+    """Check if Google API libraries are installed."""
+    try:
+        import google.oauth2.credentials
+        import google_auth_oauthlib.flow
+        import googleapiclient.discovery
+        return True
+    except ImportError:
+        return False
+
+
+def gdrive_authorize():
+    """
+    Start Google Drive OAuth flow. Opens browser for user to authorize.
+    Returns (success, message).
+    """
+    if not is_gdrive_available():
+        return False, ("Librerie Google non installate.\n"
+                       "Esegui nel terminale:\n"
+                       "pip install google-api-python-client google-auth-oauthlib")
+
+    if not OAUTH_CLIENT_CONFIG["installed"]["client_id"]:
+        return False, ("OAuth non configurato dal developer.\n"
+                       "Il developer deve inserire client_id e client_secret\n"
+                       "in backup_utils.py > OAUTH_CLIENT_CONFIG")
+
+    try:
+        from google_auth_oauthlib.flow import InstalledAppFlow
+
+        flow = InstalledAppFlow.from_client_config(OAUTH_CLIENT_CONFIG, SCOPES)
+        creds = flow.run_local_server(port=0, prompt="consent")
+
+        os.makedirs(os.path.dirname(TOKEN_PATH), exist_ok=True)
+        with open(TOKEN_PATH, "w") as f:
+            f.write(creds.to_json())
+
+        return True, "Google Drive autorizzato con successo!"
+
+    except Exception as e:
+        return False, f"Errore durante l'autorizzazione:\n{e}"
+
+
+def gdrive_disconnect():
+    """Remove Google Drive authorization."""
+    if os.path.exists(TOKEN_PATH):
+        os.remove(TOKEN_PATH)
+    settings = get_settings()
+    settings["gdrive_enabled"] = False
+    save_settings(settings)
+
+
+def _get_gdrive_service():
+    """Get authenticated Google Drive service."""
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request as GRequest
+    from googleapiclient.discovery import build
+
+    creds = Credentials.from_authorized_user_file(TOKEN_PATH, SCOPES)
+    if creds.expired and creds.refresh_token:
+        creds.refresh(GRequest())
+        with open(TOKEN_PATH, "w") as f:
+            f.write(creds.to_json())
+
+    return build("drive", "v3", credentials=creds)
+
+
+def _get_or_create_folder(service, folder_name):
+    """Get or create a folder on Google Drive. Returns folder ID."""
+    results = service.files().list(
+        q=f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+        spaces="drive", fields="files(id, name)", pageSize=1
+    ).execute()
+
+    files = results.get("files", [])
+    if files:
+        return files[0]["id"]
+
+    folder_metadata = {
+        "name": folder_name,
+        "mimeType": "application/vnd.google-apps.folder",
+    }
+    folder = service.files().create(body=folder_metadata, fields="id").execute()
+    return folder["id"]
+
+
+# --- Local Backup ---
+
 def do_local_backup():
-    """Create a local backup and clean up old ones."""
     settings = get_settings()
     dest = settings.get("local_backup_dir", db.BACKUP_DIR)
     backup_path = db.create_backup(dest)
-    # Cleanup old backups
     max_backups = settings.get("max_local_backups", 10)
     _cleanup_old_backups(dest, max_backups)
     return backup_path
 
 
 def _cleanup_old_backups(backup_dir, max_count):
-    """Keep only the most recent N backups."""
     if not os.path.exists(backup_dir):
         return
     backups = sorted(
@@ -60,90 +161,51 @@ def _cleanup_old_backups(backup_dir, max_count):
         os.remove(os.path.join(backup_dir, old))
 
 
-def do_gdrive_backup(callback=None):
-    """
-    Upload backup to Google Drive.
-    callback(success, message) is called when done.
-    Requires google-api-python-client and google-auth-oauthlib.
-    """
-    settings = get_settings()
-    if not settings.get("gdrive_enabled"):
-        if callback:
-            callback(False, "Google Drive non abilitato.")
-        return
+# --- Google Drive Backup ---
 
+def do_gdrive_backup(callback=None):
+    """Upload backup to Google Drive in background thread."""
     def _upload():
         try:
-            # Create local backup first
+            if not is_gdrive_configured():
+                if callback:
+                    callback(False, "Google Drive non autorizzato.\nVai in Backup > Impostazioni per configurarlo.")
+                return
+
             backup_path = do_local_backup()
             backup_name = os.path.basename(backup_path)
 
-            from google.oauth2.credentials import Credentials
-            from google_auth_oauthlib.flow import InstalledAppFlow
-            from google.auth.transport.requests import Request as GRequest
-            from googleapiclient.discovery import build
+            service = _get_gdrive_service()
+
+            settings = get_settings()
+            folder_name = settings.get("gdrive_folder_name", "MyNotes Backup")
+            folder_id = _get_or_create_folder(service, folder_name)
+
             from googleapiclient.http import MediaFileUpload
-
-            creds_path = os.path.join(db.DATA_DIR, "gdrive_credentials.json")
-            token_path = os.path.join(db.DATA_DIR, "gdrive_token.json")
-
-            SCOPES = ['https://www.googleapis.com/auth/drive.file']
-
-            creds = None
-            if os.path.exists(token_path):
-                creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-
-            if not creds or not creds.valid:
-                if creds and creds.expired and creds.refresh_token:
-                    creds.refresh(GRequest())
-                else:
-                    if not os.path.exists(creds_path):
-                        if callback:
-                            callback(False,
-                                     "File gdrive_credentials.json non trovato in data/.\n"
-                                     "Scaricalo da Google Cloud Console > API > Credentials > OAuth 2.0.")
-                        return
-                    flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
-                    creds = flow.run_local_server(port=0)
-
-                with open(token_path, 'w') as token:
-                    token.write(creds.to_json())
-
-            service = build('drive', 'v3', credentials=creds)
-
-            file_metadata = {'name': backup_name}
-            folder_id = settings.get("gdrive_folder_id")
-            if folder_id:
-                file_metadata['parents'] = [folder_id]
-
-            media = MediaFileUpload(backup_path, mimetype='application/octet-stream')
-            service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+            file_metadata = {"name": backup_name, "parents": [folder_id]}
+            media = MediaFileUpload(backup_path, mimetype="application/octet-stream")
+            service.files().create(body=file_metadata, media_body=media, fields="id").execute()
 
             if callback:
-                callback(True, f"Backup caricato su Google Drive: {backup_name}")
+                callback(True, f"Backup caricato su Google Drive\nCartella: {folder_name}\nFile: {backup_name}")
 
-        except ImportError:
-            if callback:
-                callback(False,
-                         "Librerie Google Drive non installate.\n"
-                         "Esegui: pip install google-api-python-client google-auth-oauthlib")
         except Exception as e:
             if callback:
-                callback(False, f"Errore upload Google Drive: {e}")
+                callback(False, f"Errore upload:\n{e}")
 
     threading.Thread(target=_upload, daemon=True).start()
 
 
 def do_full_backup(callback=None):
-    """Create local backup + optional Google Drive upload."""
+    """Local backup + optional Google Drive."""
     backup_path = do_local_backup()
     settings = get_settings()
 
-    if settings.get("gdrive_enabled"):
-        def _gdrive_callback(success, msg):
+    if settings.get("gdrive_enabled") and is_gdrive_configured():
+        def _cb(success, msg):
             if callback:
                 callback(success, f"Backup locale: {backup_path}\n{msg}")
-        do_gdrive_backup(_gdrive_callback)
+        do_gdrive_backup(_cb)
     else:
         if callback:
-            callback(True, f"Backup locale creato: {backup_path}")
+            callback(True, f"Backup locale creato:\n{backup_path}")
