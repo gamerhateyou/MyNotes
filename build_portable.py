@@ -45,9 +45,17 @@ def build():
         "--clean",              # clean build cache
         # Tell PyInstaller where to find local modules
         "--paths", ".",
-        # Local modules (PyInstaller might not auto-detect all of them)
+        # Local modules
         "--hidden-import", "database",
         "--hidden-import", "gui",
+        "--hidden-import", "gui.constants",
+        "--hidden-import", "gui.menu",
+        "--hidden-import", "gui.layout",
+        "--hidden-import", "gui.note_controller",
+        "--hidden-import", "gui.export_controller",
+        "--hidden-import", "gui.media_controller",
+        "--hidden-import", "gui.backup_controller",
+        "--hidden-import", "gui.update_controller",
         "--hidden-import", "dialogs",
         "--hidden-import", "image_utils",
         "--hidden-import", "platform_utils",
