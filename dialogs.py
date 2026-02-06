@@ -586,13 +586,22 @@ class BackupSettingsDialog(tk.Toplevel):
         else:
             self.auth_btn.config(state=tk.DISABLED, text="Autorizzazione in corso...")
             self.update_idletasks()
-            success, msg = self.backup_utils.gdrive_authorize()
-            self.auth_btn.config(state=tk.NORMAL)
-            if success:
-                messagebox.showinfo("Google Drive", msg, parent=self)
-            else:
-                messagebox.showerror("Errore", msg, parent=self)
-            self._update_gdrive_status()
+
+            import threading
+
+            def _do_auth():
+                success, msg = self.backup_utils.gdrive_authorize()
+                self.after(0, lambda: self._auth_done(success, msg))
+
+            threading.Thread(target=_do_auth, daemon=True).start()
+
+    def _auth_done(self, success, msg):
+        self.auth_btn.config(state=tk.NORMAL)
+        if success:
+            messagebox.showinfo("Google Drive", msg, parent=self)
+        else:
+            messagebox.showerror("Errore", msg, parent=self)
+        self._update_gdrive_status()
 
     def _browse_dir(self):
         d = filedialog.askdirectory(parent=self, title="Cartella backup")
