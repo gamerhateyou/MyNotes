@@ -44,6 +44,9 @@ jobs:
           sudo apt-get install -y python3-tk libportaudio2
 
       - name: Build executable
+        env:
+          MYNOTES_OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+          MYNOTES_OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
         run: python build_portable.py
 
       - name: Package Linux

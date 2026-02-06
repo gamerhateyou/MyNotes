@@ -32,8 +32,35 @@ def check_pyinstaller():
         return True
 
 
+def inject_oauth_credentials():
+    """Inject OAuth credentials from env vars into backup_utils.py before build."""
+    client_id = os.environ.get("MYNOTES_OAUTH_CLIENT_ID", "")
+    client_secret = os.environ.get("MYNOTES_OAUTH_CLIENT_SECRET", "")
+    if not client_id:
+        print("NOTA: MYNOTES_OAUTH_CLIENT_ID non impostato, Google Drive non funzionera'")
+        return
+
+    path = os.path.join(SCRIPT_DIR, "backup_utils.py")
+    with open(path, "r") as f:
+        content = f.read()
+
+    content = content.replace(
+        'os.environ.get("MYNOTES_OAUTH_CLIENT_ID", "")',
+        f'os.environ.get("MYNOTES_OAUTH_CLIENT_ID", "{client_id}")',
+    )
+    content = content.replace(
+        'os.environ.get("MYNOTES_OAUTH_CLIENT_SECRET", "")',
+        f'os.environ.get("MYNOTES_OAUTH_CLIENT_SECRET", "{client_secret}")',
+    )
+
+    with open(path, "w") as f:
+        f.write(content)
+    print(f"OAuth credentials iniettati in backup_utils.py")
+
+
 def build():
     check_pyinstaller()
+    inject_oauth_credentials()
 
     # PyInstaller command
     cmd = [
@@ -65,6 +92,7 @@ def build():
         "--hidden-import", "crypto_utils",
         "--hidden-import", "backup_utils",
         "--hidden-import", "audio_utils",
+        "--hidden-import", "error_codes",
         # PIL
         "--hidden-import", "PIL",
         "--hidden-import", "PIL.Image",
