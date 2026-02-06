@@ -1,10 +1,13 @@
 """Auto-update from GitHub Releases."""
 
+import logging
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 import updater
 from version import VERSION
+
+log = logging.getLogger("updater.gui")
 
 
 class UpdateController:
@@ -15,7 +18,8 @@ class UpdateController:
         def _check():
             try:
                 result = updater.check_for_updates()
-            except ConnectionError:
+            except Exception:
+                log.debug("check_silent: errore ignorato", exc_info=True)
                 return
             if result:
                 self.app.root.after(0, lambda: self.app.status_var.set(
@@ -23,21 +27,27 @@ class UpdateController:
         threading.Thread(target=_check, daemon=True).start()
 
     def check(self):
+        log.info("check() avviato dall'utente")
         self.app.status_var.set("Controllo aggiornamenti...")
         def _check():
             try:
                 result = updater.check_for_updates()
+                log.info("check_for_updates() ritornato: %s", result)
                 self.app.root.after(0, lambda: self._handle_result(result))
-            except ConnectionError as e:
-                self.app.root.after(0, lambda: self._handle_error(str(e)))
+            except Exception as e:
+                log.error("Eccezione nel thread di controllo: %s: %s", type(e).__name__, e, exc_info=True)
+                err = str(e)
+                self.app.root.after(0, lambda: self._handle_error(err))
         threading.Thread(target=_check, daemon=True).start()
 
     def _handle_error(self, error_msg):
+        log.info("_handle_error: %s", error_msg)
         self.app.status_var.set("Errore controllo aggiornamenti")
         messagebox.showerror("Errore", f"Impossibile verificare aggiornamenti.\n\n{error_msg}",
                             parent=self.app.root)
 
     def _handle_result(self, result):
+        log.info("_handle_result: %s", result)
         if result is None:
             self.app.status_var.set("Nessun aggiornamento")
             messagebox.showinfo("Aggiornamenti", f"MyNotes v{VERSION} e' aggiornato!",

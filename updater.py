@@ -1,6 +1,7 @@
 """Sistema di auto-aggiornamento da GitHub Releases."""
 
 import json
+import logging
 import os
 import sys
 import shutil
@@ -11,6 +12,8 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError
 
 from version import VERSION, GITHUB_REPO
+
+log = logging.getLogger("updater")
 
 if getattr(sys, 'frozen', False):
     APP_DIR = os.path.dirname(sys.executable)
@@ -36,27 +39,37 @@ def check_for_updates():
     Ritorna (new_version, download_url, release_notes) oppure None.
     Lancia ConnectionError se non riesce a contattare GitHub.
     """
+    log.info("Controllo aggiornamenti - versione locale: %s, repo: %s", VERSION, GITHUB_REPO)
+
     if not GITHUB_REPO:
+        log.warning("GITHUB_REPO non configurato, skip")
         return None
 
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+    log.info("Richiesta API: %s", url)
     try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
         req = Request(url, headers={"Accept": "application/vnd.github.v3+json"})
         with urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
+            raw = resp.read().decode()
+            data = json.loads(raw)
     except (URLError, json.JSONDecodeError, OSError) as e:
+        log.error("Errore contatto GitHub: %s: %s", type(e).__name__, e)
         raise ConnectionError(f"Impossibile contattare GitHub: {e}")
 
     tag = data.get("tag_name", "")
     remote_ver = _parse_version(tag)
     local_ver = _parse_version(VERSION)
+    log.info("Versione remota: %s %s, locale: %s %s", tag, remote_ver, VERSION, local_ver)
 
     if remote_ver <= local_ver:
+        log.info("Nessun aggiornamento disponibile (remota <= locale)")
         return None
 
     # Trova l'asset giusto per questa piattaforma
     is_windows = sys.platform == "win32"
     target = "Windows" if is_windows else "Linux"
+    asset_names = [a.get("name", "") for a in data.get("assets", [])]
+    log.info("Piattaforma: %s, asset disponibili: %s", target, asset_names)
 
     download_url = None
     for asset in data.get("assets", []):
@@ -66,9 +79,11 @@ def check_for_updates():
             break
 
     if not download_url:
+        log.warning("Nessun asset trovato per piattaforma '%s'", target)
         return None
 
     notes = data.get("body", "")
+    log.info("Aggiornamento disponibile: %s -> %s", download_url, tag)
     return (tag, download_url, notes)
 
 
