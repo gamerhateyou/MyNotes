@@ -232,6 +232,68 @@ class NoteController:
 
         app.status_var.set("Salvato")
 
+    # --- Context Menu ---
+
+    def show_context_menu(self, event):
+        app = self.app
+        # Select the note under cursor
+        idx = app.note_listbox.nearest(event.y)
+        if idx < 0 or idx >= len(app.notes):
+            return
+        app.note_listbox.selection_clear(0, tk.END)
+        app.note_listbox.selection_set(idx)
+        self.on_note_select()
+
+        note = db.get_note(app.current_note_id)
+        if not note:
+            return
+
+        menu = tk.Menu(app.root, tearoff=0)
+
+        if app.show_trash:
+            menu.add_command(label="Ripristina", command=lambda: self._restore_from_trash())
+            menu.add_command(label="Elimina definitivamente", command=lambda: self._permanent_delete())
+        else:
+            pin_label = "Sgancia" if note["is_pinned"] else "Fissa in cima"
+            fav_label = "Rimuovi dai preferiti" if note["is_favorite"] else "Aggiungi ai preferiti"
+            menu.add_command(label=pin_label, command=self.toggle_pin)
+            menu.add_command(label=fav_label, command=self.toggle_favorite)
+            menu.add_separator()
+            menu.add_command(label="Tag...", command=self.manage_tags)
+            menu.add_command(label="Allegati...", command=self.manage_attachments)
+            menu.add_command(label="Cronologia versioni...", command=self.show_versions)
+            menu.add_separator()
+            if note["is_encrypted"]:
+                menu.add_command(label="Decripta...", command=self.decrypt_note)
+            else:
+                menu.add_command(label="Cripta...", command=self.encrypt_note)
+            menu.add_separator()
+            menu.add_command(label="Condividi (.mynote)...", command=lambda: app.export_ctl.export_mynote())
+            menu.add_command(label="Esporta HTML...", command=lambda: app.export_ctl.export_html())
+            menu.add_separator()
+            menu.add_command(label="Sposta nel cestino", command=self.delete_note)
+
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _restore_from_trash(self):
+        if self.app.current_note_id is None:
+            return
+        db.restore_note(self.app.current_note_id)
+        self.app.current_note_id = None
+        self.load_categories()
+        self.load_notes()
+
+    def _permanent_delete(self):
+        app = self.app
+        if app.current_note_id is None:
+            return
+        note = db.get_note(app.current_note_id)
+        if messagebox.askyesno("Conferma", f"Eliminare '{note['title']}' definitivamente?\nQuesta azione non puo' essere annullata."):
+            db.permanent_delete_note(app.current_note_id)
+            app.current_note_id = None
+            self.load_categories()
+            self.load_notes()
+
     # --- Checklist ---
 
     def insert_checklist(self):

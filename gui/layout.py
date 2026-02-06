@@ -69,6 +69,7 @@ def build_main_layout(app):
     app.note_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
     app.note_listbox.bind("<<ListboxSelect>>", lambda e: app.notes_ctl.on_note_select())
     app.note_listbox.bind("<Delete>", lambda e: app.notes_ctl.delete_note())
+    app.note_listbox.bind("<Button-3>", lambda e: app.notes_ctl.show_context_menu(e))
 
     # Right panel - editor
     editor_frame = ttk.Frame(main_pane)
