@@ -13,7 +13,10 @@ class UpdateController:
 
     def check_silent(self):
         def _check():
-            result = updater.check_for_updates()
+            try:
+                result = updater.check_for_updates()
+            except ConnectionError:
+                return
             if result:
                 self.app.root.after(0, lambda: self.app.status_var.set(
                     f"Aggiornamento disponibile: {result[0]} (Aiuto > Controlla aggiornamenti)"))
@@ -22,9 +25,16 @@ class UpdateController:
     def check(self):
         self.app.status_var.set("Controllo aggiornamenti...")
         def _check():
-            result = updater.check_for_updates()
-            self.app.root.after(0, lambda: self._handle_result(result))
+            try:
+                result = updater.check_for_updates()
+                self.app.root.after(0, lambda: self._handle_result(result))
+            except ConnectionError as e:
+                self.app.root.after(0, lambda: self._handle_error(str(e)))
         threading.Thread(target=_check, daemon=True).start()
+
+    def _handle_error(self, error_msg):
+        self.app.status_var.set("Errore controllo aggiornamenti")
+        messagebox.showerror("Errore", f"Impossibile verificare aggiornamenti.\n\n{error_msg}")
 
     def _handle_result(self, result):
         if result is None:

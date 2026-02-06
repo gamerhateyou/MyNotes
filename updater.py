@@ -34,6 +34,7 @@ def check_for_updates():
     """
     Controlla se esiste una versione più recente su GitHub.
     Ritorna (new_version, download_url, release_notes) oppure None.
+    Lancia ConnectionError se non riesce a contattare GitHub.
     """
     if not GITHUB_REPO:
         return None
@@ -43,8 +44,8 @@ def check_for_updates():
         req = Request(url, headers={"Accept": "application/vnd.github.v3+json"})
         with urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode())
-    except (URLError, json.JSONDecodeError, OSError):
-        return None
+    except (URLError, json.JSONDecodeError, OSError) as e:
+        raise ConnectionError(f"Impossibile contattare GitHub: {e}")
 
     tag = data.get("tag_name", "")
     remote_ver = _parse_version(tag)

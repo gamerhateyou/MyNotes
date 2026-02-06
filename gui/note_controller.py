@@ -136,6 +136,7 @@ class NoteController:
         app.title_var.set(note["title"])
         app.title_var.trace_add("write", lambda *_: self.schedule_save())
 
+        app.text_editor.config(state=tk.NORMAL)
         app.text_editor.delete("1.0", tk.END)
 
         if note["is_encrypted"]:
@@ -193,6 +194,9 @@ class NoteController:
         app = self.app
         app._save_job = None
         if app.current_note_id is None:
+            return
+        # Don't save if editor is disabled (encrypted placeholder)
+        if app.text_editor["state"] == "disabled":
             return
         note = db.get_note(app.current_note_id)
         if not note or note["is_encrypted"] and app.current_note_id not in app._decrypted_cache:
