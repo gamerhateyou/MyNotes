@@ -13,16 +13,30 @@ def build_toolbar(app):
     ttk.Button(toolbar, text="+ Categoria", command=lambda: app.notes_ctl.new_category()).pack(side=tk.LEFT, padx=2)
     ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
 
-    ttk.Button(toolbar, text="Pin", command=lambda: app.notes_ctl.toggle_pin()).pack(side=tk.LEFT, padx=2)
-    ttk.Button(toolbar, text="Fav", command=lambda: app.notes_ctl.toggle_favorite()).pack(side=tk.LEFT, padx=2)
-    ttk.Button(toolbar, text="Tag", command=lambda: app.notes_ctl.manage_tags()).pack(side=tk.LEFT, padx=2)
-    ttk.Button(toolbar, text="Allegati", command=lambda: app.notes_ctl.manage_attachments()).pack(side=tk.LEFT, padx=2)
-    ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
+    # Dropdown "Nota" - azioni sulla nota corrente
+    note_mb = ttk.Menubutton(toolbar, text="Nota \u25be")
+    note_menu = tk.Menu(note_mb, tearoff=0)
+    note_menu.add_command(label="Fissa/Sgancia", command=lambda: app.notes_ctl.toggle_pin())
+    note_menu.add_command(label="Preferita", command=lambda: app.notes_ctl.toggle_favorite())
+    note_menu.add_separator()
+    note_menu.add_command(label="Tag...", command=lambda: app.notes_ctl.manage_tags())
+    note_menu.add_command(label="Allegati...", command=lambda: app.notes_ctl.manage_attachments())
+    note_mb["menu"] = note_menu
+    note_mb.pack(side=tk.LEFT, padx=2)
 
-    ttk.Button(toolbar, text="Screenshot", command=lambda: app.media_ctl.take_screenshot()).pack(side=tk.LEFT, padx=2)
-    ttk.Button(toolbar, text="Immagine", command=lambda: app.media_ctl.insert_image()).pack(side=tk.LEFT, padx=2)
-    ttk.Button(toolbar, text="Checklist", command=lambda: app.notes_ctl.insert_checklist()).pack(side=tk.LEFT, padx=2)
-    ttk.Button(toolbar, text="Audio", command=lambda: app.media_ctl.record_audio()).pack(side=tk.LEFT, padx=2)
+    # Dropdown "Inserisci" - inserimento contenuti
+    ins_mb = ttk.Menubutton(toolbar, text="Inserisci \u25be")
+    ins_menu = tk.Menu(ins_mb, tearoff=0)
+    ins_menu.add_command(label="Screenshot intero", command=lambda: app.media_ctl.take_screenshot())
+    ins_menu.add_command(label="Screenshot regione", command=lambda: app.media_ctl.take_screenshot_region())
+    ins_menu.add_command(label="Immagine...", command=lambda: app.media_ctl.insert_image())
+    ins_menu.add_separator()
+    ins_menu.add_command(label="Checklist", command=lambda: app.notes_ctl.insert_checklist())
+    ins_menu.add_separator()
+    ins_menu.add_command(label="Registra audio...", command=lambda: app.media_ctl.record_audio())
+    ins_menu.add_command(label="Importa audio...", command=lambda: app.media_ctl.import_audio())
+    ins_mb["menu"] = ins_menu
+    ins_mb.pack(side=tk.LEFT, padx=2)
 
     ttk.Label(toolbar, text="  Cerca:").pack(side=tk.LEFT, padx=(15, 5))
     app.search_var = tk.StringVar()
