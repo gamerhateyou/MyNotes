@@ -1,9 +1,27 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+
+# App data (note utente, db, allegati, token)
+data/
+*.db
+
+# PyInstaller
 dist/
 build/
 *.spec
-data/
-*.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code
 .claude/
+
+# OS
+.DS_Store
+Thumbs.db
