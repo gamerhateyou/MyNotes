@@ -2,7 +2,8 @@
 
 ## Architettura
 - App desktop Python/Tkinter con SQLite locale, portabile e cross-platform (Windows + Linux)
-- Pattern MVC leggero: `database.py` (model), `gui.py` (view/controller), `dialogs.py` (dialog views)
+- Pattern MVC: `database.py` (model con context manager `_connect()`), `gui/` package (controller per area), `dialogs.py` (dialog views)
+- `gui/`: `__init__.py` (app principale), `constants.py`, `layout.py`, `menu.py`, `note_controller.py`, `export_controller.py`, `media_controller.py`, `backup_controller.py`, `update_controller.py`
 - `platform_utils.py` astrae tutte le differenze OS (file opening, screenshot, fonts)
 - `image_utils.py` converte PIL -> PNG base64 -> tk.PhotoImage (workaround per ImageTk mancante)
 - `crypto_utils.py` crittografia AES con PBKDF2 (Fernet se disponibile, fallback XOR+HMAC)
@@ -13,7 +14,6 @@
 
 ## Comandi
 - `python3 main.py` - avvia l'app
-- `./run.sh` / `run.bat` - launcher portabili che verificano dipendenze
 - `python build_portable.py` - build eseguibile standalone con PyInstaller
 - `git tag vX.Y.Z && git push origin vX.Y.Z` - triggera GitHub Actions build + release
 
@@ -29,6 +29,13 @@
 - Dipendenze: Pillow, reportlab, google-api-python-client, google-auth-oauthlib (tutte in requirements.txt)
 - Tutti i path relativi a APP_DIR (portabilita chiavetta USB)
 - Google Drive: OAuth credentials embedded in backup_utils.py, utente clicca solo "Accedi con Google"
+
+## Gotcha critici
+- Tkinter Text widget DISABLED: `delete()`/`insert()` falliscono silenziosamente. Sempre `config(state=NORMAL)` prima di modificare
+- `save_current()` non deve leggere contenuto editor se è DISABLED (placeholder crittografia)
+- Updater: mai trattare errori di rete come "già aggiornato" - lanciare ConnectionError
+- Release: NON eliminare release vecchie valide, tenerle per chi ha versioni precedenti
+- PyInstaller: usare `--hidden-import` per moduli Python, MAI `--add-data` per file .py
 
 ## Build & Deploy
 - GitHub Actions workflow in `.github/workflows/build.yml` builda Linux + Windows
