@@ -1,5 +1,6 @@
 """MyNotes GUI - Main application controller."""
 
+import logging
 import tkinter as tk
 from tkinter import ttk
 import database as db
@@ -14,6 +15,8 @@ from gui.export_controller import ExportController
 from gui.media_controller import MediaController
 from gui.backup_controller import BackupController
 from gui.update_controller import UpdateController
+
+log = logging.getLogger("app")
 
 
 class MyNotesApp:
@@ -47,6 +50,10 @@ class MyNotesApp:
         self.backup_ctl = BackupController(self)
         self.update_ctl = UpdateController(self)
 
+        # Backup scheduler
+        self._backup_scheduler = backup_utils.BackupScheduler(self.root)
+        self._backup_scheduler.start()
+
         # Load data
         self.notes_ctl.load_categories()
         self.notes_ctl.load_notes()
@@ -56,12 +63,13 @@ class MyNotesApp:
 
     def _on_close(self):
         self.notes_ctl.save_current()
+        self._backup_scheduler.stop()
         settings = backup_utils.get_settings()
         if settings.get("auto_backup", True):
             try:
                 backup_utils.do_local_backup()
-            except Exception:
-                pass
+            except Exception as e:
+                log.warning("Auto-backup alla chiusura fallito: %s", e)
         self.root.quit()
 
     def _setup_styles(self):

@@ -447,15 +447,29 @@ def create_backup(dest_dir=None):
     return backup_path
 
 
-def get_backups():
-    if not os.path.exists(BACKUP_DIR):
+def get_backups(backup_dir=None):
+    bdir = backup_dir or BACKUP_DIR
+    if not os.path.exists(bdir):
         return []
     backups = []
-    for f in sorted(os.listdir(BACKUP_DIR), reverse=True):
-        if f.startswith("mynotes_backup_") and f.endswith(".db"):
-            path = os.path.join(BACKUP_DIR, f)
+    for f in sorted(os.listdir(bdir), reverse=True):
+        if f.startswith("mynotes_backup_") and (f.endswith(".db") or f.endswith(".db.enc")):
+            path = os.path.join(bdir, f)
             size = os.path.getsize(path)
-            backups.append({"filename": f, "path": path, "size": size})
+            # Parse data dal filename
+            try:
+                name = f.replace(".db.enc", ".db")
+                ts = datetime.strptime(name, "mynotes_backup_%Y%m%d_%H%M%S.db")
+                date_str = ts.strftime("%d/%m/%Y %H:%M:%S")
+            except ValueError:
+                date_str = ""
+            backups.append({
+                "filename": f,
+                "path": path,
+                "size": size,
+                "date_str": date_str,
+                "encrypted": f.endswith(".db.enc"),
+            })
     return backups
 
 

@@ -9,9 +9,14 @@ ERROR_CODES = {
     "UPD-005": "Estrazione archivio fallita",
     "UPD-006": "Applicazione file aggiornamento fallita",
     "UPD-007": "Creazione script aggiornamento Windows fallita",
-    # Backup (predisposti)
+    # Backup
     "BKP-001": "Errore backup locale",
     "BKP-002": "Errore connessione Google Drive",
+    "BKP-003": "Ripristino backup fallito",
+    "BKP-004": "Verifica integrita' backup fallita",
+    "BKP-005": "Crittografia backup fallita",
+    "BKP-006": "Decrittografia backup fallita",
+    "BKP-007": "Scheduler backup fallito",
     # Export (predisposti)
     "EXP-001": "Errore esportazione nota",
     "EXP-002": "Errore importazione nota",

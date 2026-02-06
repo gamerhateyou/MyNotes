@@ -52,6 +52,9 @@ def build_menu(app):
     backup_menu = tk.Menu(menubar, tearoff=0)
     backup_menu.add_command(label="Backup ora", command=lambda: app.backup_ctl.do_backup())
     backup_menu.add_command(label="Backup Google Drive", command=lambda: app.backup_ctl.do_gdrive_backup())
+    backup_menu.add_separator()
+    backup_menu.add_command(label="Ripristina backup...", command=lambda: app.backup_ctl.do_restore())
+    backup_menu.add_separator()
     backup_menu.add_command(label="Impostazioni backup...", command=lambda: app.backup_ctl.open_settings())
     menubar.add_cascade(label="Backup", menu=backup_menu)
 

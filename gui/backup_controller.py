@@ -1,8 +1,10 @@
 """Backup local and Google Drive."""
 
+import subprocess
 from tkinter import messagebox
 import backup_utils
-from dialogs import BackupSettingsDialog
+import updater
+from dialogs import BackupSettingsDialog, BackupRestoreDialog
 
 
 class BackupController:
@@ -33,5 +35,28 @@ class BackupController:
             self.app.status_var.set("Backup Google Drive fallito")
             messagebox.showwarning("Google Drive", msg)
 
+    def do_restore(self):
+        dlg = BackupRestoreDialog(self.app.root)
+        if not dlg.result:
+            return
+
+        path = dlg.result["path"]
+        password = dlg.result.get("password")
+
+        success, msg, safety_path = backup_utils.restore_from_backup(path, password)
+        if success:
+            info = f"{msg}\n\nBackup di sicurezza: {safety_path}\n\nL'app verra' riavviata."
+            messagebox.showinfo("Ripristino completato", info)
+            try:
+                subprocess.Popen(updater.get_restart_command())
+            except Exception:
+                pass
+            self.app.root.quit()
+        else:
+            messagebox.showerror("Errore ripristino", msg)
+
     def open_settings(self):
         BackupSettingsDialog(self.app.root)
+        # Restart scheduler se impostazioni cambiate
+        if hasattr(self.app, '_backup_scheduler'):
+            self.app._backup_scheduler.restart_if_settings_changed()

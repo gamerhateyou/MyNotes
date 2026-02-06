@@ -81,3 +81,53 @@ def _xor_crypt(data, key):
             keystream = hashlib.sha256(keystream + struct.pack('>I', i)).digest()
         result[i] = data[i] ^ keystream[i % 32]
     return bytes(result)
+
+
+# --- File encryption/decryption ---
+
+def encrypt_file(source, dest, password):
+    """Critta un file binario. Scrive salt + encrypted_data nel dest."""
+    with open(source, "rb") as f:
+        data = f.read()
+
+    key, salt = _derive_key(password)
+
+    if _HAS_FERNET:
+        fernet_key = base64.urlsafe_b64encode(key)
+        f = Fernet(fernet_key)
+        encrypted = f.encrypt(data)
+        with open(dest, "wb") as out:
+            out.write(salt + encrypted)
+    else:
+        encrypted = _xor_crypt(data, key)
+        mac = hashlib.hmac_digest(key, encrypted, 'sha256')
+        with open(dest, "wb") as out:
+            out.write(salt + mac + encrypted)
+
+
+def decrypt_file(source, dest, password):
+    """Decritta un file binario. Ritorna True se ok, False se password errata."""
+    try:
+        with open(source, "rb") as f:
+            raw = f.read()
+
+        salt = raw[:16]
+        key, _ = _derive_key(password, salt)
+
+        if _HAS_FERNET:
+            fernet_key = base64.urlsafe_b64encode(key)
+            f = Fernet(fernet_key)
+            decrypted = f.decrypt(raw[16:])
+        else:
+            mac = raw[16:48]
+            encrypted = raw[48:]
+            expected_mac = hashlib.hmac_digest(key, encrypted, 'sha256')
+            if mac != expected_mac:
+                return False
+            decrypted = _xor_crypt(encrypted, key)
+
+        with open(dest, "wb") as out:
+            out.write(decrypted)
+        return True
+    except Exception:
+        return False

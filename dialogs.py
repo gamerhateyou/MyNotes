@@ -559,6 +559,41 @@ class BackupSettingsDialog(tk.Toplevel):
         ttk.Spinbox(gdrive_max_frame, from_=0, to=100, textvariable=self.gdrive_max_var, width=5).pack(side=tk.LEFT, padx=5)
         ttk.Label(gdrive_max_frame, text="0 = illimitato", foreground="#888888").pack(side=tk.LEFT)
 
+        # --- Crittografia ---
+        ttk.Separator(frame).pack(fill=tk.X, pady=10)
+        ttk.Label(frame, text="Crittografia", font=("Sans", 10, "bold")).pack(anchor=tk.W)
+
+        self.encrypt_var = tk.BooleanVar(value=self.settings.get("encrypt_backups", False))
+        ttk.Checkbutton(frame, text="Cripta backup con password",
+                        variable=self.encrypt_var).pack(anchor=tk.W, pady=(5, 0))
+
+        pw_status = "Password impostata" if backup_utils._get_backup_password() else "Password non impostata"
+        pw_color = "#228B22" if backup_utils._get_backup_password() else "#888888"
+        self.pw_status_label = ttk.Label(frame, text=pw_status, foreground=pw_color)
+        self.pw_status_label.pack(anchor=tk.W, pady=(2, 0))
+
+        # --- Scheduler ---
+        ttk.Separator(frame).pack(fill=tk.X, pady=10)
+        ttk.Label(frame, text="Backup Automatico", font=("Sans", 10, "bold")).pack(anchor=tk.W)
+
+        interval_frame = ttk.Frame(frame)
+        interval_frame.pack(fill=tk.X, pady=(5, 5))
+        ttk.Label(interval_frame, text="Intervallo backup:").pack(side=tk.LEFT)
+
+        self._interval_labels = ["Disabilitato", "30 minuti", "1 ora", "2 ore",
+                                 "4 ore", "8 ore", "12 ore", "24 ore"]
+        self._interval_values = [0, 30, 60, 120, 240, 480, 720, 1440]
+        self.interval_combo = ttk.Combobox(interval_frame, values=self._interval_labels,
+                                           state="readonly", width=15)
+        current_interval = self.settings.get("backup_interval_minutes", 0)
+        idx = self._interval_values.index(current_interval) if current_interval in self._interval_values else 0
+        self.interval_combo.current(idx)
+        self.interval_combo.pack(side=tk.LEFT, padx=5)
+
+        last_backup = self.settings.get("last_backup_time", "")
+        last_text = f"Ultimo backup: {last_backup}" if last_backup else "Ultimo backup: mai"
+        ttk.Label(frame, text=last_text, foreground="#888888").pack(anchor=tk.W, pady=(2, 0))
+
         # Buttons
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(fill=tk.X, pady=(15, 0))
@@ -616,6 +651,145 @@ class BackupSettingsDialog(tk.Toplevel):
         self.settings["gdrive_enabled"] = self.gdrive_var.get()
         self.settings["gdrive_folder_name"] = self.folder_var.get()
         self.settings["max_gdrive_backups"] = self.gdrive_max_var.get()
+
+        # Crittografia backup
+        encrypt = self.encrypt_var.get()
+        self.settings["encrypt_backups"] = encrypt
+        if encrypt and not self.backup_utils._get_backup_password():
+            # Chiedi password se non impostata
+            pwd_dlg = PasswordDialog(self, title="Password backup", confirm=True)
+            if pwd_dlg.result:
+                self.backup_utils.set_backup_password(pwd_dlg.result)
+            else:
+                self.settings["encrypt_backups"] = False
+
+        # Scheduler
+        self.settings["backup_interval_minutes"] = self._interval_values[self.interval_combo.current()]
+
         self.backup_utils.save_settings(self.settings)
         messagebox.showinfo("Salvato", "Impostazioni backup salvate.", parent=self)
+        self.destroy()
+
+
+class BackupRestoreDialog(tk.Toplevel):
+    """Dialog per selezionare e ripristinare un backup."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Ripristina Backup")
+        self.result = None
+        self.geometry("650x500")
+        self.grab_set()
+
+        import backup_utils
+        self.backup_utils = backup_utils
+
+        frame = ttk.Frame(self, padding=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frame, text="Backup disponibili:", font=("Sans", 10, "bold")).pack(anchor=tk.W)
+
+        # Backup list
+        list_frame = ttk.Frame(frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        self.backup_list = tk.Listbox(list_frame, font=("Sans", 10))
+        scroll = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.backup_list.yview)
+        self.backup_list.configure(yscrollcommand=scroll.set)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.backup_list.pack(fill=tk.BOTH, expand=True)
+        self.backup_list.bind("<<ListboxSelect>>", lambda e: self._on_select())
+
+        # Pannello dettagli
+        detail_frame = ttk.LabelFrame(frame, text="Dettagli", padding=10)
+        detail_frame.pack(fill=tk.X, pady=5)
+
+        self.detail_date = ttk.Label(detail_frame, text="Data: -")
+        self.detail_date.pack(anchor=tk.W)
+        self.detail_size = ttk.Label(detail_frame, text="Dimensione: -")
+        self.detail_size.pack(anchor=tk.W)
+        self.detail_notes = ttk.Label(detail_frame, text="Note: -")
+        self.detail_notes.pack(anchor=tk.W)
+        self.detail_integrity = ttk.Label(detail_frame, text="Integrita': -")
+        self.detail_integrity.pack(anchor=tk.W)
+        self.detail_checksum = ttk.Label(detail_frame, text="Checksum: -")
+        self.detail_checksum.pack(anchor=tk.W)
+        self.detail_encrypted = ttk.Label(detail_frame, text="")
+        self.detail_encrypted.pack(anchor=tk.W)
+
+        # Buttons
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill=tk.X, pady=(5, 0))
+        ttk.Button(btn_frame, text="Chiudi", command=self.destroy).pack(side=tk.RIGHT)
+        ttk.Button(btn_frame, text="Ripristina", command=self._restore).pack(side=tk.RIGHT, padx=5)
+
+        # Carica lista backup
+        settings = backup_utils.get_settings()
+        backup_dir = settings.get("local_backup_dir", db.BACKUP_DIR)
+        self.backups = db.get_backups(backup_dir)
+        for b in self.backups:
+            enc_label = " [crittografato]" if b["encrypted"] else ""
+            size_kb = b["size"] / 1024
+            self.backup_list.insert(
+                tk.END,
+                f"{b['date_str']}  ({size_kb:.0f} KB){enc_label}"
+            )
+
+        if not self.backups:
+            self.backup_list.insert(tk.END, "Nessun backup disponibile.")
+
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.transient(parent)
+        self.wait_window()
+
+    def _on_select(self):
+        sel = self.backup_list.curselection()
+        if not sel or not self.backups:
+            return
+        b = self.backups[sel[0]]
+        self.detail_date.config(text=f"Data: {b['date_str']}")
+        size_kb = b["size"] / 1024
+        self.detail_size.config(text=f"Dimensione: {size_kb:.1f} KB")
+
+        if b["encrypted"]:
+            self.detail_encrypted.config(text="Crittografato: Si'")
+            self.detail_notes.config(text="Note: (richiede password)")
+            self.detail_integrity.config(text="Integrita': (richiede decrittografia)")
+        else:
+            self.detail_encrypted.config(text="")
+            count = self.backup_utils.get_note_count_from_backup(b["path"])
+            self.detail_notes.config(text=f"Note: {count}" if count >= 0 else "Note: errore lettura")
+            ok, msg = self.backup_utils.verify_backup_integrity(b["path"])
+            color = "#228B22" if ok else "#cc0000"
+            self.detail_integrity.config(text=f"Integrita': {msg}", foreground=color)
+
+        ok_cs, msg_cs = self.backup_utils.verify_checksum(b["path"])
+        if ok_cs is True:
+            color_cs = "#228B22"
+        elif ok_cs is False:
+            color_cs = "#cc0000"
+        else:
+            color_cs = "#888888"
+        self.detail_checksum.config(text=f"Checksum: {msg_cs}", foreground=color_cs)
+
+    def _restore(self):
+        sel = self.backup_list.curselection()
+        if not sel or not self.backups:
+            return
+        b = self.backups[sel[0]]
+        password = None
+
+        if b["encrypted"]:
+            pwd_dlg = PasswordDialog(self, title="Password backup")
+            if not pwd_dlg.result:
+                return
+            password = pwd_dlg.result
+
+        msg = ("Il database attuale verra' sostituito.\n"
+               "Un backup di sicurezza verra' creato automaticamente.\n\n"
+               "Continuare con il ripristino?")
+        if not messagebox.askyesno("Conferma ripristino", msg, parent=self):
+            return
+
+        self.result = {"path": b["path"], "password": password}
         self.destroy()
