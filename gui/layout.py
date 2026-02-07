@@ -61,12 +61,18 @@ def build_main_layout(app):
     tk.Label(app.sidebar, text="CATEGORIE", bg="#2b2b2b", fg="#888888",
              font=(UI_FONT, 9, "bold"), anchor=tk.W, padx=12, pady=8).pack(fill=tk.X)
 
+    cat_list_frame = tk.Frame(app.sidebar, bg="#2b2b2b")
+    cat_list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
     app.cat_listbox = tk.Listbox(
-        app.sidebar, bg="#2b2b2b", fg="#cccccc", selectbackground="#3d6fa5",
+        cat_list_frame, bg="#2b2b2b", fg="#cccccc", selectbackground="#3d6fa5",
         selectforeground="#ffffff", font=(UI_FONT, 10), borderwidth=0,
         highlightthickness=0, activestyle="none"
     )
-    app.cat_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+    cat_scroll = ttk.Scrollbar(cat_list_frame, orient=tk.VERTICAL, command=app.cat_listbox.yview)
+    app.cat_listbox.configure(yscrollcommand=cat_scroll.set)
+    cat_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+    app.cat_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     app.cat_listbox.bind("<<ListboxSelect>>", lambda e: app.notes_ctl.on_category_select())
     app.cat_listbox.bind("<Button-3>", lambda e: app.notes_ctl.show_category_context_menu(e))
 
@@ -77,12 +83,18 @@ def build_main_layout(app):
     app.list_header = ttk.Label(center, text="Note", style="Title.TLabel", padding=(10, 8))
     app.list_header.pack(fill=tk.X)
 
+    note_list_frame = ttk.Frame(center)
+    note_list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+
     app.note_listbox = tk.Listbox(
-        center, font=(UI_FONT, 10), selectbackground="#4a90d9",
+        note_list_frame, font=(UI_FONT, 10), selectbackground="#4a90d9",
         selectforeground="#ffffff", borderwidth=0, highlightthickness=1,
         highlightcolor="#cccccc", selectmode=tk.EXTENDED
     )
-    app.note_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+    note_scroll = ttk.Scrollbar(note_list_frame, orient=tk.VERTICAL, command=app.note_listbox.yview)
+    app.note_listbox.configure(yscrollcommand=note_scroll.set)
+    note_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+    app.note_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     app.note_listbox.bind("<<ListboxSelect>>", lambda e: app.notes_ctl.on_note_select())
     app.note_listbox.bind("<Delete>", lambda e: app.notes_ctl.delete_note())
     app.note_listbox.bind("<Button-3>", lambda e: app.notes_ctl.show_context_menu(e))

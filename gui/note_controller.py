@@ -23,6 +23,7 @@ class NoteController:
         self._drag_start_y = 0
         self._drag_label = None
         self._drag_highlight_idx = -1
+        self._deferred_select = None
 
     # --- Data Loading ---
 
@@ -146,18 +147,34 @@ class NoteController:
         self._drag_start_x = event.x_root
         self._drag_start_y = event.y_root
         self._drag_active = False
+        self._deferred_select = None
+
+        app = self.app
+        idx = app.note_listbox.nearest(event.y)
+        if idx < 0 or idx >= len(app.notes):
+            return
+
+        sel = app.note_listbox.curselection()
+        # Clicking on a selected item in multi-selection without modifiers:
+        # suppress default deselection to preserve selection for drag
+        if (len(sel) > 1 and idx in sel
+                and not (event.state & 0x4) and not (event.state & 0x1)):
+            self._deferred_select = idx
+            return "break"
 
     def _on_drag_motion(self, event):
         app = self.app
-        dx = event.x_root - self._drag_start_x
-        dy = event.y_root - self._drag_start_y
 
-        # Activate drag only after 5px movement threshold
+        # Skip all drag processing when in trash or single/no selection
         if not self._drag_active:
+            if app.show_trash:
+                return
+            dx = event.x_root - self._drag_start_x
+            dy = event.y_root - self._drag_start_y
             if abs(dx) < 5 and abs(dy) < 5:
                 return
             sel = app.note_listbox.curselection()
-            if not sel or app.show_trash:
+            if not sel or len(sel) < 2:
                 return
             self._drag_active = True
             # Create floating label
@@ -199,6 +216,12 @@ class NoteController:
     def _on_drag_drop(self, event):
         """Handle drop: move selected notes to the target category."""
         if not self._drag_active:
+            # No drag happened: apply deferred single-selection
+            if self._deferred_select is not None:
+                self.app.note_listbox.selection_clear(0, tk.END)
+                self.app.note_listbox.selection_set(self._deferred_select)
+                self._deferred_select = None
+                self.on_note_select()
             self._drag_cleanup()
             return
 
@@ -253,6 +276,7 @@ class NoteController:
             self._restore_cat_color(self._drag_highlight_idx)
             self._drag_highlight_idx = -1
         self._drag_active = False
+        self._deferred_select = None
 
     def _restore_cat_color(self, idx):
         """Restore the default background color for a category listbox item."""
