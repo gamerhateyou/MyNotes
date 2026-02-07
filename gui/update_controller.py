@@ -178,11 +178,23 @@ class UpdateController:
             def finish():
                 progress_win.destroy()
                 if success:
-                    if messagebox.askyesno("Completato", "Aggiornamento applicato!\nRiavviare ora?",
-                                          parent=app.root):
-                        import subprocess
-                        subprocess.Popen(updater.get_restart_command())
+                    import sys
+                    is_windows = sys.platform == "win32"
+                    if is_windows:
+                        # Su Windows il .bat attende la chiusura, copia e riavvia
+                        messagebox.showinfo("Completato",
+                                            "Aggiornamento scaricato!\n"
+                                            "L'app si chiudera' e verra' riavviata automaticamente.",
+                                            parent=app.root)
+                        app.notes_ctl.save_current()
                         app.root.quit()
+                    else:
+                        if messagebox.askyesno("Completato", "Aggiornamento applicato!\nRiavviare ora?",
+                                              parent=app.root):
+                            import subprocess
+                            app.notes_ctl.save_current()
+                            subprocess.Popen(updater.get_restart_command())
+                            app.root.quit()
                 else:
                     body = "Aggiornamento fallito."
                     if last_error[0]:

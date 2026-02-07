@@ -249,7 +249,15 @@ def _create_windows_update_script(source_dir, app_dir, tmp_dir):
     with open(bat_path, "w") as f:
         f.write("@echo off\n")
         f.write("echo Aggiornamento MyNotes in corso...\n")
-        f.write("timeout /t 3 /nobreak >nul\n")  # attendi chiusura app
+        f.write("echo Attendo chiusura MyNotes...\n")
+        # Attendi che MyNotes.exe non sia piu' in esecuzione (max 60s)
+        f.write(":wait_loop\n")
+        f.write(f'tasklist /FI "IMAGENAME eq {exe_name}" 2>nul | find /I "{exe_name}" >nul\n')
+        f.write("if %errorlevel%==0 (\n")
+        f.write("    timeout /t 1 /nobreak >nul\n")
+        f.write("    goto wait_loop\n")
+        f.write(")\n")
+        f.write("timeout /t 1 /nobreak >nul\n")  # extra 1s sicurezza
         # Copia file (non data/)
         for item in os.listdir(source_dir):
             if item == "data":
