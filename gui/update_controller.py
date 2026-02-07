@@ -5,7 +5,7 @@ import threading
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton, QProgressBar, QPlainTextEdit,
                                 QGroupBox, QMessageBox)
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QObject, Signal, Slot
 from PySide6.QtGui import QFont
 import updater
 from version import VERSION
@@ -13,6 +13,14 @@ from gui.constants import UI_FONT, FG_SECONDARY
 from error_codes import AppError
 
 log = logging.getLogger("updater.gui")
+
+
+class _ThreadSignals(QObject):
+    """Signals for thread-safe UI updates."""
+    progress = Signal(int, str)
+    finished = Signal(bool)
+    result_ready = Signal(object)
+    error_ready = Signal(object, str, str)
 
 
 class UpdateController:
@@ -26,6 +34,8 @@ class UpdateController:
             return
 
         skip = settings.get("skipped_versions", [])
+        signals = _ThreadSignals(self.app)
+        signals.result_ready.connect(lambda r: self._on_silent_result(r))
 
         def _check():
             try:
@@ -34,10 +44,13 @@ class UpdateController:
                 log.warning("check_silent: errore ignorato", exc_info=True)
                 return
             if result:
-                tag, url, notes = result
-                QTimer.singleShot(0, lambda: self._show_update_available(tag, url, notes))
+                signals.result_ready.emit(result)
 
         threading.Thread(target=_check, daemon=True).start()
+
+    def _on_silent_result(self, result):
+        tag, url, notes = result
+        self._show_update_available(tag, url, notes)
 
     def check(self):
         log.info("check() avviato dall'utente")
@@ -50,18 +63,22 @@ class UpdateController:
             updater.save_update_settings(settings)
             log.info("check(): riabilitato auto_check e pulito skipped_versions")
 
+        signals = _ThreadSignals(self.app)
+        signals.result_ready.connect(lambda r: self._handle_result(r))
+        signals.error_ready.connect(lambda c, m, d: self._handle_error(c, m, d))
+
         def _check():
             try:
                 result = updater.check_for_updates()
                 log.info("check_for_updates() ritornato: %s", result)
-                QTimer.singleShot(0, lambda: self._handle_result(result))
+                signals.result_ready.emit(result)
             except AppError as e:
                 log.warning("Errore strutturato nel controllo: %s", e, exc_info=True)
-                QTimer.singleShot(0, lambda: self._handle_error(e.code, e.message, e.detail))
+                signals.error_ready.emit(e.code, e.message, e.detail)
             except Exception as e:
                 log.error("Eccezione nel thread di controllo: %s: %s",
                           type(e).__name__, e, exc_info=True)
-                QTimer.singleShot(0, lambda: self._handle_error(None, str(e), ""))
+                signals.error_ready.emit(None, str(e), "")
 
         threading.Thread(target=_check, daemon=True).start()
 
@@ -171,43 +188,49 @@ class UpdateController:
 
         last_error = [None]
 
+        signals = _ThreadSignals(app)
+        signals.progress.connect(lambda pct, msg: (
+            status_label.setText(msg),
+            progress_bar.setValue(max(0, int(pct)))
+        ))
+        signals.finished.connect(lambda success: self._on_update_finished(
+            success, last_error[0], progress_dlg, app))
+
         def on_progress(pct, msg):
             if pct < 0:
                 last_error[0] = msg
-            QTimer.singleShot(0, lambda: (
-                status_label.setText(msg),
-                progress_bar.setValue(max(0, int(pct)))
-            ))
+            signals.progress.emit(int(pct), msg)
 
         def do_download():
             success = updater.download_and_apply_update(download_url, on_progress)
-            def finish():
-                progress_dlg.close()
-                if success:
-                    import sys
-                    is_windows = sys.platform == "win32"
-                    if is_windows:
-                        QMessageBox.information(
-                            app, "Completato",
-                            "Aggiornamento scaricato!\n"
-                            "L'app si chiudera' e verra' riavviata automaticamente.")
-                        app.notes_ctl.save_current()
-                        app.close()
-                    else:
-                        if QMessageBox.question(
-                            app, "Completato",
-                            "Aggiornamento applicato!\nRiavviare ora?"
-                        ) == QMessageBox.Yes:
-                            import subprocess
-                            app.notes_ctl.save_current()
-                            subprocess.Popen(updater.get_restart_command())
-                            app.close()
-                else:
-                    body = "Aggiornamento fallito."
-                    if last_error[0]:
-                        body += f"\n\n{last_error[0]}"
-                    body += "\n\nFile di log: data/mynotes.log"
-                    QMessageBox.critical(app, "Errore", body)
-            QTimer.singleShot(0, finish)
+            signals.finished.emit(success)
 
         threading.Thread(target=do_download, daemon=True).start()
+
+    def _on_update_finished(self, success, error_msg, progress_dlg, app):
+        progress_dlg.close()
+        if success:
+            import sys
+            is_windows = sys.platform == "win32"
+            if is_windows:
+                QMessageBox.information(
+                    app, "Completato",
+                    "Aggiornamento scaricato!\n"
+                    "L'app si chiudera' e verra' riavviata automaticamente.")
+                app.notes_ctl.save_current()
+                app.close()
+            else:
+                if QMessageBox.question(
+                    app, "Completato",
+                    "Aggiornamento applicato!\nRiavviare ora?"
+                ) == QMessageBox.Yes:
+                    import subprocess
+                    app.notes_ctl.save_current()
+                    subprocess.Popen(updater.get_restart_command())
+                    app.close()
+        else:
+            body = "Aggiornamento fallito."
+            if error_msg:
+                body += f"\n\n{error_msg}"
+            body += "\n\nFile di log: data/mynotes.log"
+            QMessageBox.critical(app, "Errore", body)
