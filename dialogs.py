@@ -4,12 +4,18 @@ from tkinter import ttk, messagebox, filedialog
 import database as db
 import platform_utils
 import audio_utils
+from gui.constants import (UI_FONT, FONT_SM, FONT_BASE,
+                           BG_SURFACE, BG_ELEVATED,
+                           FG_PRIMARY, FG_SECONDARY, FG_MUTED,
+                           ACCENT, SUCCESS, DANGER,
+                           SELECT_BG, SELECT_FG)
 
 
 class CategoryDialog(tk.Toplevel):
     def __init__(self, parent, title="Nuova Categoria", initial_name=""):
         super().__init__(parent)
         self.title(title)
+        self.configure(bg=BG_SURFACE)
         self.result = None
         self.resizable(False, False)
         self.grab_set()
@@ -42,6 +48,7 @@ class NoteDialog(tk.Toplevel):
     def __init__(self, parent, categories):
         super().__init__(parent)
         self.title("Nuova Nota")
+        self.configure(bg=BG_SURFACE)
         self.result = None
         self.resizable(False, False)
         self.grab_set()
@@ -87,6 +94,7 @@ class TagManagerDialog(tk.Toplevel):
     def __init__(self, parent, note_id):
         super().__init__(parent)
         self.title("Gestione Tag")
+        self.configure(bg=BG_SURFACE)
         self.note_id = note_id
         self.resizable(False, False)
         self.grab_set()
@@ -144,6 +152,7 @@ class AttachmentDialog(tk.Toplevel):
     def __init__(self, parent, note_id):
         super().__init__(parent)
         self.title("Allegati")
+        self.configure(bg=BG_SURFACE)
         self.note_id = note_id
         self.geometry("450x350")
         self.grab_set()
@@ -156,7 +165,10 @@ class AttachmentDialog(tk.Toplevel):
         ttk.Button(toolbar, text="Rimuovi selezionato", command=self._remove_file).pack(side=tk.LEFT, padx=5)
         ttk.Button(toolbar, text="Apri file", command=self._open_file).pack(side=tk.LEFT)
 
-        self.listbox = tk.Listbox(frame, selectmode=tk.SINGLE)
+        self.listbox = tk.Listbox(frame, selectmode=tk.SINGLE, bg=BG_ELEVATED,
+                                   fg=FG_PRIMARY, selectbackground=SELECT_BG,
+                                   selectforeground=SELECT_FG, font=(UI_FONT, FONT_BASE),
+                                   borderwidth=0, highlightthickness=0)
         self.listbox.pack(fill=tk.BOTH, expand=True)
         self.attachments = []
         self._load_attachments()
@@ -204,6 +216,7 @@ class VersionHistoryDialog(tk.Toplevel):
     def __init__(self, parent, note_id):
         super().__init__(parent)
         self.title("Cronologia versioni")
+        self.configure(bg=BG_SURFACE)
         self.note_id = note_id
         self.result = None
         self.geometry("600x450")
@@ -212,13 +225,16 @@ class VersionHistoryDialog(tk.Toplevel):
         frame = ttk.Frame(self, padding=15)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text="Versioni salvate:", font=("Sans", 10, "bold")).pack(anchor=tk.W)
+        ttk.Label(frame, text="Versioni salvate:", font=(UI_FONT, FONT_BASE, "bold")).pack(anchor=tk.W)
 
         # Version list
         list_frame = ttk.Frame(frame)
         list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        self.version_list = tk.Listbox(list_frame, font=("Sans", 10))
+        self.version_list = tk.Listbox(list_frame, font=(UI_FONT, FONT_BASE),
+                                        bg=BG_ELEVATED, fg=FG_PRIMARY,
+                                        selectbackground=SELECT_BG, selectforeground=SELECT_FG,
+                                        borderwidth=0, highlightthickness=0)
         scroll = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.version_list.yview)
         self.version_list.configure(yscrollcommand=scroll.set)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
@@ -227,8 +243,9 @@ class VersionHistoryDialog(tk.Toplevel):
 
         # Preview
         ttk.Label(frame, text="Anteprima:").pack(anchor=tk.W, pady=(5, 0))
-        self.preview = tk.Text(frame, height=8, font=("Monospace", 10), state=tk.DISABLED,
-                               wrap=tk.WORD, bg="#f8f8f8")
+        self.preview = tk.Text(frame, height=8, font=(UI_FONT, FONT_BASE), state=tk.DISABLED,
+                               wrap=tk.WORD, bg=BG_ELEVATED, fg=FG_PRIMARY,
+                               insertbackground=FG_PRIMARY)
         self.preview.pack(fill=tk.BOTH, expand=True, pady=5)
 
         # Buttons
@@ -281,6 +298,7 @@ class PasswordDialog(tk.Toplevel):
     def __init__(self, parent, title="Password", confirm=False):
         super().__init__(parent)
         self.title(title)
+        self.configure(bg=BG_SURFACE)
         self.result = None
         self.resizable(False, False)
         self.grab_set()
@@ -335,6 +353,7 @@ class AudioRecordDialog(tk.Toplevel):
         self._elapsed = 0
         self._recording = False
         self._temp_path = None
+        self.configure(bg=BG_SURFACE)
         self.resizable(False, False)
         self.grab_set()
 
@@ -360,11 +379,11 @@ class AudioRecordDialog(tk.Toplevel):
         self.desc_entry.focus_set()
 
         # Timer
-        self.timer_label = ttk.Label(frame, text="00:00", font=("Sans", 18, "bold"))
+        self.timer_label = ttk.Label(frame, text="00:00", font=(UI_FONT, 18, "bold"))
         self.timer_label.pack(pady=10)
 
         # Status
-        self.status_label = ttk.Label(frame, text="Pronto per registrare", foreground="#888888")
+        self.status_label = ttk.Label(frame, text="Pronto per registrare", foreground=FG_SECONDARY)
         self.status_label.pack(pady=(0, 10))
 
         # Record/Stop buttons
@@ -380,7 +399,7 @@ class AudioRecordDialog(tk.Toplevel):
             self.rec_btn.config(state=tk.DISABLED)
             self.status_label.config(
                 text="Libreria 'sounddevice' non installata.\npip install sounddevice",
-                foreground="#cc0000"
+                foreground=DANGER
             )
 
         ttk.Separator(frame).pack(fill=tk.X, pady=10)
@@ -426,7 +445,7 @@ class AudioRecordDialog(tk.Toplevel):
         self.rec_btn.config(text="Stop")
         self.preview_btn.config(state=tk.DISABLED)
         self.save_btn.config(state=tk.DISABLED)
-        self.status_label.config(text="Registrazione in corso...", foreground="#cc0000")
+        self.status_label.config(text="Registrazione in corso...", foreground=DANGER)
         self._update_timer()
 
     def _stop_recording(self):
@@ -438,7 +457,7 @@ class AudioRecordDialog(tk.Toplevel):
         self.rec_btn.config(text="Registra")
         self.preview_btn.config(state=tk.NORMAL)
         self.save_btn.config(state=tk.NORMAL)
-        self.status_label.config(text="Registrazione completata", foreground="#228B22")
+        self.status_label.config(text="Registrazione completata", foreground=SUCCESS)
 
     def _update_timer(self):
         if not self._recording:
@@ -486,6 +505,7 @@ class BackupSettingsDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Impostazioni Backup")
+        self.configure(bg=BG_SURFACE)
         self.resizable(False, False)
         self.grab_set()
 
@@ -497,7 +517,7 @@ class BackupSettingsDialog(tk.Toplevel):
         frame.pack(fill=tk.BOTH, expand=True)
 
         # --- Local Backup ---
-        ttk.Label(frame, text="Backup Locale", font=("Sans", 10, "bold")).pack(anchor=tk.W)
+        ttk.Label(frame, text="Backup Locale", font=(UI_FONT, FONT_BASE, "bold")).pack(anchor=tk.W)
 
         self.auto_var = tk.BooleanVar(value=self.settings.get("auto_backup", True))
         ttk.Checkbutton(frame, text="Backup automatico alla chiusura", variable=self.auto_var).pack(anchor=tk.W, pady=(5, 0))
@@ -521,11 +541,11 @@ class BackupSettingsDialog(tk.Toplevel):
         ttk.Label(ret_frame, text="Cancella backup piu vecchi di (giorni):").pack(side=tk.LEFT)
         self.retention_var = tk.IntVar(value=self.settings.get("retention_days", 90))
         ttk.Spinbox(ret_frame, from_=0, to=365, textvariable=self.retention_var, width=5).pack(side=tk.LEFT, padx=5)
-        ttk.Label(ret_frame, text="0 = mai", foreground="#888888").pack(side=tk.LEFT)
+        ttk.Label(ret_frame, text="0 = mai", foreground=FG_SECONDARY).pack(side=tk.LEFT)
 
         # --- Google Drive ---
         ttk.Separator(frame).pack(fill=tk.X, pady=10)
-        ttk.Label(frame, text="Google Drive", font=("Sans", 10, "bold")).pack(anchor=tk.W)
+        ttk.Label(frame, text="Google Drive", font=(UI_FONT, FONT_BASE, "bold")).pack(anchor=tk.W)
 
         # Connection status
         status_frame = ttk.Frame(frame)
@@ -557,24 +577,24 @@ class BackupSettingsDialog(tk.Toplevel):
         ttk.Label(gdrive_max_frame, text="Max backup su Drive:").pack(side=tk.LEFT)
         self.gdrive_max_var = tk.IntVar(value=self.settings.get("max_gdrive_backups", 20))
         ttk.Spinbox(gdrive_max_frame, from_=0, to=100, textvariable=self.gdrive_max_var, width=5).pack(side=tk.LEFT, padx=5)
-        ttk.Label(gdrive_max_frame, text="0 = illimitato", foreground="#888888").pack(side=tk.LEFT)
+        ttk.Label(gdrive_max_frame, text="0 = illimitato", foreground=FG_SECONDARY).pack(side=tk.LEFT)
 
         # --- Crittografia ---
         ttk.Separator(frame).pack(fill=tk.X, pady=10)
-        ttk.Label(frame, text="Crittografia", font=("Sans", 10, "bold")).pack(anchor=tk.W)
+        ttk.Label(frame, text="Crittografia", font=(UI_FONT, FONT_BASE, "bold")).pack(anchor=tk.W)
 
         self.encrypt_var = tk.BooleanVar(value=self.settings.get("encrypt_backups", False))
         ttk.Checkbutton(frame, text="Cripta backup con password",
                         variable=self.encrypt_var).pack(anchor=tk.W, pady=(5, 0))
 
         pw_status = "Password impostata" if backup_utils._get_backup_password() else "Password non impostata"
-        pw_color = "#228B22" if backup_utils._get_backup_password() else "#888888"
+        pw_color = SUCCESS if backup_utils._get_backup_password() else FG_SECONDARY
         self.pw_status_label = ttk.Label(frame, text=pw_status, foreground=pw_color)
         self.pw_status_label.pack(anchor=tk.W, pady=(2, 0))
 
         # --- Scheduler ---
         ttk.Separator(frame).pack(fill=tk.X, pady=10)
-        ttk.Label(frame, text="Backup Automatico", font=("Sans", 10, "bold")).pack(anchor=tk.W)
+        ttk.Label(frame, text="Backup Automatico", font=(UI_FONT, FONT_BASE, "bold")).pack(anchor=tk.W)
 
         interval_frame = ttk.Frame(frame)
         interval_frame.pack(fill=tk.X, pady=(5, 5))
@@ -592,7 +612,7 @@ class BackupSettingsDialog(tk.Toplevel):
 
         last_backup = self.settings.get("last_backup_time", "")
         last_text = f"Ultimo backup: {last_backup}" if last_backup else "Ultimo backup: mai"
-        ttk.Label(frame, text=last_text, foreground="#888888").pack(anchor=tk.W, pady=(2, 0))
+        ttk.Label(frame, text=last_text, foreground=FG_SECONDARY).pack(anchor=tk.W, pady=(2, 0))
 
         # Buttons
         btn_frame = ttk.Frame(frame)
@@ -606,10 +626,10 @@ class BackupSettingsDialog(tk.Toplevel):
 
     def _update_gdrive_status(self):
         if self.backup_utils.is_gdrive_configured():
-            self.status_label.config(text="Connesso a Google Drive", foreground="#228B22")
+            self.status_label.config(text="Connesso a Google Drive", foreground=SUCCESS)
             self.auth_btn.config(text="Disconnetti")
         else:
-            self.status_label.config(text="Non connesso", foreground="#888888")
+            self.status_label.config(text="Non connesso", foreground=FG_SECONDARY)
             self.auth_btn.config(text="Accedi con Google")
 
     def _toggle_gdrive_auth(self):
@@ -677,6 +697,7 @@ class BackupRestoreDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Ripristina Backup")
+        self.configure(bg=BG_SURFACE)
         self.result = None
         self.geometry("650x500")
         self.grab_set()
@@ -687,13 +708,16 @@ class BackupRestoreDialog(tk.Toplevel):
         frame = ttk.Frame(self, padding=15)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text="Backup disponibili:", font=("Sans", 10, "bold")).pack(anchor=tk.W)
+        ttk.Label(frame, text="Backup disponibili:", font=(UI_FONT, FONT_BASE, "bold")).pack(anchor=tk.W)
 
         # Backup list
         list_frame = ttk.Frame(frame)
         list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        self.backup_list = tk.Listbox(list_frame, font=("Sans", 10))
+        self.backup_list = tk.Listbox(list_frame, font=(UI_FONT, FONT_BASE),
+                                       bg=BG_ELEVATED, fg=FG_PRIMARY,
+                                       selectbackground=SELECT_BG, selectforeground=SELECT_FG,
+                                       borderwidth=0, highlightthickness=0)
         scroll = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.backup_list.yview)
         self.backup_list.configure(yscrollcommand=scroll.set)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
@@ -760,16 +784,16 @@ class BackupRestoreDialog(tk.Toplevel):
             count = self.backup_utils.get_note_count_from_backup(b["path"])
             self.detail_notes.config(text=f"Note: {count}" if count >= 0 else "Note: errore lettura")
             ok, msg = self.backup_utils.verify_backup_integrity(b["path"])
-            color = "#228B22" if ok else "#cc0000"
+            color = SUCCESS if ok else DANGER
             self.detail_integrity.config(text=f"Integrita': {msg}", foreground=color)
 
         ok_cs, msg_cs = self.backup_utils.verify_checksum(b["path"])
         if ok_cs is True:
-            color_cs = "#228B22"
+            color_cs = SUCCESS
         elif ok_cs is False:
-            color_cs = "#cc0000"
+            color_cs = DANGER
         else:
-            color_cs = "#888888"
+            color_cs = FG_SECONDARY
         self.detail_checksum.config(text=f"Checksum: {msg_cs}", foreground=color_cs)
 
     def _restore(self):

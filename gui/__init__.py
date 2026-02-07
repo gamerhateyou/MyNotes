@@ -7,7 +7,11 @@ import database as db
 import backup_utils
 from version import VERSION
 
-from gui.constants import UI_FONT
+from gui.constants import (UI_FONT, MONO_FONT, FONT_SM, FONT_BASE, FONT_XL,
+                          BG_DARK, BG_SURFACE, BG_ELEVATED,
+                          BORDER, BORDER_LIGHT,
+                          FG_PRIMARY, FG_SECONDARY, FG_MUTED, FG_ON_ACCENT,
+                          ACCENT, WARNING, SELECT_BG, SELECT_FG)
 from gui.menu import build_menu
 from gui.layout import build_toolbar, build_main_layout
 from gui.note_controller import NoteController
@@ -91,10 +95,98 @@ class MyNotesApp:
         self.root.quit()
 
     def _setup_styles(self):
+        self.root.configure(bg=BG_DARK)
+
         style = ttk.Style()
         style.theme_use("clam")
-        style.configure("Toolbar.TFrame", background="#e0e0e0")
-        style.configure("Title.TLabel", font=(UI_FONT, 13, "bold"))
-        style.configure("Meta.TLabel", font=(UI_FONT, 9), foreground="#666666")
-        style.configure("ImgPanel.TLabel", font=(UI_FONT, 9), foreground="#888888")
-        style.configure("Pin.TLabel", font=(UI_FONT, 10), foreground="#e6a817")
+
+        # Base widget styles
+        style.configure(".", background=BG_SURFACE, foreground=FG_PRIMARY,
+                        bordercolor=BORDER, troughcolor=BG_DARK,
+                        fieldbackground=BG_ELEVATED, font=(UI_FONT, FONT_BASE))
+        style.map(".", background=[("active", BG_ELEVATED)],
+                  foreground=[("disabled", FG_MUTED)])
+
+        # Frames
+        style.configure("TFrame", background=BG_SURFACE)
+        style.configure("Toolbar.TFrame", background=BG_SURFACE)
+
+        # Labels
+        style.configure("TLabel", background=BG_SURFACE, foreground=FG_PRIMARY)
+        style.configure("Title.TLabel", font=(UI_FONT, FONT_XL, "bold"))
+        style.configure("Meta.TLabel", font=(UI_FONT, FONT_SM), foreground=FG_SECONDARY)
+        style.configure("ImgPanel.TLabel", font=(UI_FONT, FONT_SM), foreground=FG_SECONDARY)
+        style.configure("Pin.TLabel", font=(UI_FONT, FONT_BASE), foreground=WARNING)
+
+        # Buttons
+        style.configure("TButton", background=BG_ELEVATED, foreground=FG_PRIMARY,
+                        bordercolor=BORDER, padding=(8, 4))
+        style.map("TButton",
+                  background=[("active", BORDER_LIGHT), ("pressed", BORDER)],
+                  bordercolor=[("focus", ACCENT)])
+
+        # Entry
+        style.configure("TEntry", fieldbackground=BG_ELEVATED, foreground=FG_PRIMARY,
+                        insertcolor=FG_PRIMARY, bordercolor=BORDER, padding=4)
+        style.map("TEntry", bordercolor=[("focus", ACCENT)],
+                  fieldbackground=[("readonly", BG_SURFACE)])
+
+        # Combobox
+        style.configure("TCombobox", fieldbackground=BG_ELEVATED, foreground=FG_PRIMARY,
+                        background=BG_ELEVATED, bordercolor=BORDER,
+                        arrowcolor=FG_SECONDARY, padding=4)
+        style.map("TCombobox",
+                  fieldbackground=[("readonly", BG_ELEVATED)],
+                  foreground=[("readonly", FG_PRIMARY)],
+                  bordercolor=[("focus", ACCENT)],
+                  selectbackground=[("readonly", SELECT_BG)],
+                  selectforeground=[("readonly", SELECT_FG)])
+        # Combobox dropdown listbox
+        self.root.option_add("*TCombobox*Listbox.background", BG_ELEVATED)
+        self.root.option_add("*TCombobox*Listbox.foreground", FG_PRIMARY)
+        self.root.option_add("*TCombobox*Listbox.selectBackground", SELECT_BG)
+        self.root.option_add("*TCombobox*Listbox.selectForeground", SELECT_FG)
+
+        # Scrollbar
+        style.configure("Vertical.TScrollbar", background=BORDER,
+                        troughcolor=BG_DARK, bordercolor=BG_DARK,
+                        arrowcolor=FG_SECONDARY)
+        style.configure("Horizontal.TScrollbar", background=BORDER,
+                        troughcolor=BG_DARK, bordercolor=BG_DARK,
+                        arrowcolor=FG_SECONDARY)
+
+        # PanedWindow
+        style.configure("TPanedwindow", background=BG_SURFACE)
+        style.configure("Sash", sashthickness=4, gripcount=0,
+                        background=BORDER_LIGHT)
+
+        # Checkbutton / Radiobutton
+        style.configure("TCheckbutton", background=BG_SURFACE, foreground=FG_PRIMARY,
+                        indicatorcolor=BG_ELEVATED, indicatorbackground=BG_ELEVATED)
+        style.map("TCheckbutton",
+                  indicatorcolor=[("selected", ACCENT)],
+                  background=[("active", BG_SURFACE)])
+        style.configure("TRadiobutton", background=BG_SURFACE, foreground=FG_PRIMARY)
+        style.map("TRadiobutton", background=[("active", BG_SURFACE)])
+
+        # Separator
+        style.configure("TSeparator", background=BORDER)
+
+        # LabelFrame
+        style.configure("TLabelframe", background=BG_SURFACE, foreground=FG_SECONDARY,
+                        bordercolor=BORDER)
+        style.configure("TLabelframe.Label", background=BG_SURFACE, foreground=FG_SECONDARY)
+
+        # Spinbox
+        style.configure("TSpinbox", fieldbackground=BG_ELEVATED, foreground=FG_PRIMARY,
+                        bordercolor=BORDER, arrowcolor=FG_SECONDARY)
+
+        # Progressbar
+        style.configure("TProgressbar", troughcolor=BG_DARK, background=ACCENT,
+                        bordercolor=BORDER)
+
+        # Menubutton
+        style.configure("TMenubutton", background=BG_ELEVATED, foreground=FG_PRIMARY,
+                        bordercolor=BORDER, padding=(8, 4))
+        style.map("TMenubutton",
+                  background=[("active", BORDER_LIGHT)])

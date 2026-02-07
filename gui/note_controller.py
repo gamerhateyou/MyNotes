@@ -9,7 +9,10 @@ import database as db
 import crypto_utils
 import platform_utils
 import audio_utils
-from gui.constants import AUTO_SAVE_MS, VERSION_SAVE_EVERY
+from gui.constants import (AUTO_SAVE_MS, VERSION_SAVE_EVERY,
+                           BG_SURFACE, BG_ELEVATED,
+                           FG_PRIMARY, FG_ON_ACCENT,
+                           ACCENT, DANGER, WARNING, SELECT_BG, SELECT_FG)
 from dialogs import (CategoryDialog, NoteDialog, TagManagerDialog, AttachmentDialog,
                      VersionHistoryDialog, PasswordDialog)
 
@@ -42,8 +45,8 @@ class NoteController:
         app.cat_listbox.insert(tk.END, f"  Cestino ({trash_count})")
 
         last_idx = app.cat_listbox.size() - 1
-        app.cat_listbox.itemconfig(last_idx, fg="#aa4444")
-        app.cat_listbox.itemconfig(1, fg="#e6a817")
+        app.cat_listbox.itemconfig(last_idx, fg=DANGER)
+        app.cat_listbox.itemconfig(1, fg=WARNING)
         app.cat_listbox.selection_set(0)
 
         all_tags = db.get_all_tags()
@@ -218,7 +221,7 @@ class NoteController:
             count = len(self._drag_note_ids)
             text = f" {count} nota" if count == 1 else f" {count} note"
             self._drag_label = tk.Label(
-                app.root, text=text, bg="#4a90d9", fg="white",
+                app.root, text=text, bg=ACCENT, fg=FG_ON_ACCENT,
                 font=(None, 10, "bold"), padx=6, pady=2, relief=tk.RAISED
             )
 
@@ -242,7 +245,7 @@ class NoteController:
                 # Apply new highlight (skip Preferite and Cestino)
                 last_idx = app.cat_listbox.size() - 1
                 if idx != 1 and idx != last_idx:
-                    app.cat_listbox.itemconfig(idx, bg="#3d6fa5")
+                    app.cat_listbox.itemconfig(idx, bg=SELECT_BG)
                 self._drag_highlight_idx = idx
         else:
             # Cursor left category listbox, remove highlight
@@ -459,7 +462,8 @@ class NoteController:
         app.cat_listbox.selection_set(idx)
         self.on_category_select()
 
-        menu = tk.Menu(app.root, tearoff=0)
+        menu = tk.Menu(app.root, tearoff=0, bg=BG_ELEVATED, fg=FG_PRIMARY,
+                       activebackground=SELECT_BG, activeforeground=SELECT_FG)
         last_idx = app.cat_listbox.size() - 1
         is_user_category = 2 <= idx < last_idx
 
@@ -469,7 +473,8 @@ class NoteController:
             menu.add_command(label="Elimina", command=self.delete_category)
             menu.add_command(label="Svuota categoria", command=self.empty_category)
             # Submenu "Sposta note in" con altre categorie
-            move_menu = tk.Menu(menu, tearoff=0)
+            move_menu = tk.Menu(menu, tearoff=0, bg=BG_ELEVATED, fg=FG_PRIMARY,
+                                activebackground=SELECT_BG, activeforeground=SELECT_FG)
             move_menu.add_command(label="Nessuna categoria",
                                   command=lambda cid=cat_id: self._move_category_notes_to(cid, db._UNSET))
             for cat in app.categories:
@@ -492,7 +497,8 @@ class NoteController:
         current_sel = app.note_listbox.curselection()
         if idx in current_sel and len(current_sel) > 1:
             # Click destro dentro selezione multipla — mantieni selezione
-            menu = tk.Menu(app.root, tearoff=0)
+            menu = tk.Menu(app.root, tearoff=0, bg=BG_ELEVATED, fg=FG_PRIMARY,
+                           activebackground=SELECT_BG, activeforeground=SELECT_FG)
             self._build_multi_context_menu(menu, current_sel)
             menu.tk_popup(event.x_root, event.y_root)
             return
@@ -506,7 +512,8 @@ class NoteController:
         if not note:
             return
 
-        menu = tk.Menu(app.root, tearoff=0)
+        menu = tk.Menu(app.root, tearoff=0, bg=BG_ELEVATED, fg=FG_PRIMARY,
+                       activebackground=SELECT_BG, activeforeground=SELECT_FG)
 
         if app.show_trash:
             menu.add_command(label="Ripristina", command=lambda: self._restore_from_trash())
@@ -587,7 +594,8 @@ class NoteController:
                              command=lambda: self._favorite_multiple(sel, False))
             menu.add_separator()
             # Submenu "Sposta in" con categorie
-            move_menu = tk.Menu(menu, tearoff=0)
+            move_menu = tk.Menu(menu, tearoff=0, bg=BG_ELEVATED, fg=FG_PRIMARY,
+                                activebackground=SELECT_BG, activeforeground=SELECT_FG)
             move_menu.add_command(label="Nessuna categoria",
                                   command=lambda: self._move_multiple_to_category(sel, db._UNSET))
             for cat in app.categories:

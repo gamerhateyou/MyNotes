@@ -2,7 +2,10 @@
 
 import tkinter as tk
 from tkinter import ttk
-from gui.constants import UI_FONT, MONO_FONT
+from gui.constants import (UI_FONT, MONO_FONT, FONT_XS, FONT_SM, FONT_BASE, FONT_LG, FONT_XL,
+                           BG_DARK, BG_SURFACE, BG_ELEVATED,
+                           BORDER, FG_PRIMARY, FG_SECONDARY, FG_MUTED,
+                           ACCENT, FG_ON_ACCENT, INFO, SELECT_BG, SELECT_FG)
 
 
 def build_toolbar(app):
@@ -15,7 +18,8 @@ def build_toolbar(app):
 
     # Dropdown "Nota" - azioni sulla nota corrente
     note_mb = ttk.Menubutton(toolbar, text="Nota \u25be")
-    note_menu = tk.Menu(note_mb, tearoff=0)
+    note_menu = tk.Menu(note_mb, tearoff=0, bg=BG_ELEVATED, fg=FG_PRIMARY,
+                        activebackground=SELECT_BG, activeforeground=SELECT_FG)
     note_menu.add_command(label="Fissa/Sgancia", command=lambda: app.notes_ctl.toggle_pin())
     note_menu.add_command(label="Preferita", command=lambda: app.notes_ctl.toggle_favorite())
     note_menu.add_separator()
@@ -26,7 +30,8 @@ def build_toolbar(app):
 
     # Dropdown "Inserisci" - inserimento contenuti
     ins_mb = ttk.Menubutton(toolbar, text="Inserisci \u25be")
-    ins_menu = tk.Menu(ins_mb, tearoff=0)
+    ins_menu = tk.Menu(ins_mb, tearoff=0, bg=BG_ELEVATED, fg=FG_PRIMARY,
+                       activebackground=SELECT_BG, activeforeground=SELECT_FG)
     ins_menu.add_command(label="Screenshot intero", command=lambda: app.media_ctl.take_screenshot())
     ins_menu.add_command(label="Screenshot regione", command=lambda: app.media_ctl.take_screenshot_region())
     ins_menu.add_command(label="Immagine...", command=lambda: app.media_ctl.insert_image())
@@ -56,18 +61,18 @@ def build_main_layout(app):
     main_pane.pack(fill=tk.BOTH, expand=True)
 
     # Sidebar
-    app.sidebar = tk.Frame(main_pane, bg="#2b2b2b", width=200)
+    app.sidebar = tk.Frame(main_pane, bg=BG_SURFACE, width=200)
     main_pane.add(app.sidebar, weight=0)
 
-    tk.Label(app.sidebar, text="CATEGORIE", bg="#2b2b2b", fg="#888888",
-             font=(UI_FONT, 9, "bold"), anchor=tk.W, padx=12, pady=8).pack(fill=tk.X)
+    tk.Label(app.sidebar, text="CATEGORIE", bg=BG_SURFACE, fg=FG_SECONDARY,
+             font=(UI_FONT, FONT_SM, "bold"), anchor=tk.W, padx=12, pady=8).pack(fill=tk.X)
 
-    cat_list_frame = tk.Frame(app.sidebar, bg="#2b2b2b")
+    cat_list_frame = tk.Frame(app.sidebar, bg=BG_SURFACE)
     cat_list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
     app.cat_listbox = tk.Listbox(
-        cat_list_frame, bg="#2b2b2b", fg="#cccccc", selectbackground="#3d6fa5",
-        selectforeground="#ffffff", font=(UI_FONT, 10), borderwidth=0,
+        cat_list_frame, bg=BG_SURFACE, fg=FG_PRIMARY, selectbackground=SELECT_BG,
+        selectforeground=SELECT_FG, font=(UI_FONT, FONT_BASE), borderwidth=0,
         highlightthickness=0, activestyle="none"
     )
     cat_scroll = ttk.Scrollbar(cat_list_frame, orient=tk.VERTICAL, command=app.cat_listbox.yview)
@@ -88,9 +93,10 @@ def build_main_layout(app):
     note_list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
 
     app.note_listbox = tk.Listbox(
-        note_list_frame, font=(UI_FONT, 10), selectbackground="#4a90d9",
-        selectforeground="#ffffff", borderwidth=0, highlightthickness=1,
-        highlightcolor="#cccccc", selectmode=tk.EXTENDED
+        note_list_frame, bg=BG_ELEVATED, fg=FG_PRIMARY, font=(UI_FONT, FONT_BASE),
+        selectbackground=SELECT_BG, selectforeground=SELECT_FG,
+        borderwidth=0, highlightthickness=1, highlightcolor=BORDER,
+        selectmode=tk.EXTENDED
     )
     note_scroll = ttk.Scrollbar(note_list_frame, orient=tk.VERTICAL, command=app.note_listbox.yview)
     app.note_listbox.configure(yscrollcommand=note_scroll.set)
@@ -113,7 +119,8 @@ def build_main_layout(app):
     title_frame = ttk.Frame(editor_frame, padding=(10, 8))
     title_frame.pack(fill=tk.X)
     app.title_var = tk.StringVar()
-    app.title_entry = ttk.Entry(title_frame, textvariable=app.title_var, font=(UI_FONT, 14, "bold"))
+    app.title_entry = ttk.Entry(title_frame, textvariable=app.title_var,
+                                font=(UI_FONT, FONT_XL, "bold"))
     app.title_entry.pack(fill=tk.X)
     app.title_var.trace_add("write", lambda *_: app.notes_ctl.schedule_save())
 
@@ -128,8 +135,11 @@ def build_main_layout(app):
     text_frame = ttk.Frame(editor_pane)
     editor_pane.add(text_frame, weight=3)
     app.text_editor = tk.Text(
-        text_frame, font=(MONO_FONT, 11), wrap=tk.WORD,
-        undo=True, borderwidth=1, relief=tk.SOLID, padx=8, pady=8
+        text_frame, font=(MONO_FONT, FONT_LG), wrap=tk.WORD,
+        undo=True, borderwidth=1, relief=tk.SOLID, padx=8, pady=8,
+        bg=BG_DARK, fg=FG_PRIMARY, insertbackground=FG_PRIMARY,
+        selectbackground=ACCENT, selectforeground=FG_ON_ACCENT,
+        highlightbackground=BORDER, highlightcolor=ACCENT
     )
     scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=app.text_editor.yview)
     app.text_editor.configure(yscrollcommand=scrollbar.set)
@@ -139,9 +149,9 @@ def build_main_layout(app):
     app.text_editor.bind("<Button-1>", lambda e: app.notes_ctl.on_text_click(e))
 
     # Checklist tags
-    app.text_editor.tag_configure("checkbox_done", overstrike=True, foreground="#888888")
-    app.text_editor.tag_configure("checkbox_open", foreground="#333333")
-    app.text_editor.tag_configure("audio_marker", foreground="#1a73e8", background="#e8f0fe")
+    app.text_editor.tag_configure("checkbox_done", overstrike=True, foreground=FG_MUTED)
+    app.text_editor.tag_configure("checkbox_open", foreground=FG_PRIMARY)
+    app.text_editor.tag_configure("audio_marker", foreground=INFO, background=BG_ELEVATED)
 
     # Gallery
     gallery_frame = ttk.Frame(editor_pane)
@@ -153,8 +163,8 @@ def build_main_layout(app):
     ttk.Button(gallery_header, text="Apri", command=lambda: app.media_ctl.open_selected()).pack(side=tk.RIGHT, padx=2)
     ttk.Button(gallery_header, text="Rimuovi", command=lambda: app.media_ctl.remove_selected()).pack(side=tk.RIGHT, padx=2)
 
-    app.gallery_canvas = tk.Canvas(gallery_frame, height=120, bg="#f5f5f5",
-                                   highlightthickness=1, highlightbackground="#cccccc")
+    app.gallery_canvas = tk.Canvas(gallery_frame, height=120, bg=BG_ELEVATED,
+                                   highlightthickness=1, highlightbackground=BORDER)
     gallery_scroll = ttk.Scrollbar(gallery_frame, orient=tk.HORIZONTAL, command=app.gallery_canvas.xview)
     app.gallery_canvas.configure(xscrollcommand=gallery_scroll.set)
     gallery_scroll.pack(side=tk.BOTTOM, fill=tk.X)
@@ -168,5 +178,7 @@ def build_main_layout(app):
 
     # Status bar
     app.status_var = tk.StringVar(value="Pronto")
-    ttk.Label(app.root, textvariable=app.status_var, relief=tk.SUNKEN,
-              anchor=tk.W, padding=(8, 3)).pack(fill=tk.X, side=tk.BOTTOM)
+    status_bar = ttk.Label(app.root, textvariable=app.status_var, relief=tk.SUNKEN,
+                           anchor=tk.W, padding=(8, 3))
+    status_bar.configure(background=BG_SURFACE)
+    status_bar.pack(fill=tk.X, side=tk.BOTTOM)

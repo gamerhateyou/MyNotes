@@ -12,7 +12,11 @@ import crypto_utils
 import image_utils
 import platform_utils
 import audio_utils
-from gui.constants import UI_FONT, MONO_FONT, AUTO_SAVE_MS, VERSION_SAVE_EVERY
+from gui.constants import (UI_FONT, MONO_FONT, AUTO_SAVE_MS, VERSION_SAVE_EVERY,
+                           FONT_XS, FONT_LG, FONT_XL,
+                           BG_DARK, BG_SURFACE, BG_ELEVATED,
+                           BORDER, FG_PRIMARY, FG_SECONDARY, FG_MUTED, FG_ON_ACCENT,
+                           ACCENT, INFO, SELECT_BG, SELECT_FG)
 from annotator import AnnotationTool
 from dialogs import (TagManagerDialog, AttachmentDialog,
                      VersionHistoryDialog, PasswordDialog, AudioRecordDialog)
@@ -38,6 +42,7 @@ class NoteWindow(tk.Toplevel):
 
         self.geometry("900x650")
         self.minsize(700, 450)
+        self.configure(bg=BG_SURFACE)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._build_ui()
@@ -52,7 +57,8 @@ class NoteWindow(tk.Toplevel):
 
         # Dropdown "Nota"
         note_mb = ttk.Menubutton(toolbar, text="Nota \u25be")
-        note_menu = tk.Menu(note_mb, tearoff=0)
+        note_menu = tk.Menu(note_mb, tearoff=0, bg=BG_ELEVATED, fg=FG_PRIMARY,
+                            activebackground=SELECT_BG, activeforeground=SELECT_FG)
         note_menu.add_command(label="Fissa/Sgancia", command=self.toggle_pin)
         note_menu.add_command(label="Preferita", command=self.toggle_favorite)
         note_menu.add_separator()
@@ -67,7 +73,8 @@ class NoteWindow(tk.Toplevel):
 
         # Dropdown "Inserisci"
         ins_mb = ttk.Menubutton(toolbar, text="Inserisci \u25be")
-        ins_menu = tk.Menu(ins_mb, tearoff=0)
+        ins_menu = tk.Menu(ins_mb, tearoff=0, bg=BG_ELEVATED, fg=FG_PRIMARY,
+                           activebackground=SELECT_BG, activeforeground=SELECT_FG)
         ins_menu.add_command(label="Screenshot intero", command=self.take_screenshot)
         ins_menu.add_command(label="Screenshot regione", command=self.take_screenshot_region)
         ins_menu.add_command(label="Immagine...", command=self.insert_image)
@@ -84,7 +91,7 @@ class NoteWindow(tk.Toplevel):
         title_frame.pack(fill=tk.X)
         self.title_var = tk.StringVar()
         self.title_entry = ttk.Entry(title_frame, textvariable=self.title_var,
-                                     font=(UI_FONT, 14, "bold"))
+                                     font=(UI_FONT, FONT_XL, "bold"))
         self.title_entry.pack(fill=tk.X)
         self.title_var.trace_add("write", lambda *_: self.schedule_save())
 
@@ -102,8 +109,11 @@ class NoteWindow(tk.Toplevel):
         text_frame = ttk.Frame(editor_pane)
         editor_pane.add(text_frame, weight=3)
         self.text_editor = tk.Text(
-            text_frame, font=(MONO_FONT, 11), wrap=tk.WORD,
-            undo=True, borderwidth=1, relief=tk.SOLID, padx=8, pady=8
+            text_frame, font=(MONO_FONT, FONT_LG), wrap=tk.WORD,
+            undo=True, borderwidth=1, relief=tk.SOLID, padx=8, pady=8,
+            bg=BG_DARK, fg=FG_PRIMARY, insertbackground=FG_PRIMARY,
+            selectbackground=ACCENT, selectforeground=FG_ON_ACCENT,
+            highlightbackground=BORDER, highlightcolor=ACCENT
         )
         scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL,
                                   command=self.text_editor.yview)
@@ -113,9 +123,9 @@ class NoteWindow(tk.Toplevel):
         self.text_editor.bind("<KeyRelease>", lambda e: self.schedule_save())
         self.text_editor.bind("<Button-1>", lambda e: self.on_text_click(e))
 
-        self.text_editor.tag_configure("checkbox_done", overstrike=True, foreground="#888888")
-        self.text_editor.tag_configure("checkbox_open", foreground="#333333")
-        self.text_editor.tag_configure("audio_marker", foreground="#1a73e8", background="#e8f0fe")
+        self.text_editor.tag_configure("checkbox_done", overstrike=True, foreground=FG_MUTED)
+        self.text_editor.tag_configure("checkbox_open", foreground=FG_PRIMARY)
+        self.text_editor.tag_configure("audio_marker", foreground=INFO, background=BG_ELEVATED)
 
         # Gallery
         gallery_frame = ttk.Frame(editor_pane)
@@ -131,8 +141,8 @@ class NoteWindow(tk.Toplevel):
         ttk.Button(gallery_header, text="Rimuovi",
                    command=self.remove_selected).pack(side=tk.RIGHT, padx=2)
 
-        self.gallery_canvas = tk.Canvas(gallery_frame, height=120, bg="#f5f5f5",
-                                        highlightthickness=1, highlightbackground="#cccccc")
+        self.gallery_canvas = tk.Canvas(gallery_frame, height=120, bg=BG_ELEVATED,
+                                        highlightthickness=1, highlightbackground=BORDER)
         gallery_scroll = ttk.Scrollbar(gallery_frame, orient=tk.HORIZONTAL,
                                        command=self.gallery_canvas.xview)
         self.gallery_canvas.configure(xscrollcommand=gallery_scroll.set)
@@ -147,8 +157,10 @@ class NoteWindow(tk.Toplevel):
 
         # Status bar
         self.status_var = tk.StringVar(value="Pronto")
-        ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN,
-                  anchor=tk.W, padding=(8, 3)).pack(fill=tk.X, side=tk.BOTTOM)
+        status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN,
+                               anchor=tk.W, padding=(8, 3))
+        status_bar.configure(background=BG_SURFACE)
+        status_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
         # Keyboard shortcuts
         self.bind("<Control-s>", lambda e: self.save_current())
@@ -351,13 +363,13 @@ class NoteWindow(tk.Toplevel):
             if not os.path.exists(path):
                 items.append((i, att, path, None))
                 continue
-            frame = tk.Frame(self.gallery_inner, bg="#f5f5f5", padx=4, pady=4)
+            frame = tk.Frame(self.gallery_inner, bg=BG_ELEVATED, padx=4, pady=4)
             frame.pack(side=tk.LEFT, padx=3, pady=3)
-            lbl = tk.Label(frame, text="...", width=12, height=5, bg="#e0e0e0",
+            lbl = tk.Label(frame, text="...", width=12, height=5, bg=BG_SURFACE,
                            cursor="hand2", borderwidth=2, relief=tk.FLAT)
             lbl.pack()
-            tk.Label(frame, text=att["original_name"][:15], bg="#f5f5f5",
-                     font=(UI_FONT, 7), fg="#666").pack()
+            tk.Label(frame, text=att["original_name"][:15], bg=BG_ELEVATED,
+                     font=(UI_FONT, FONT_XS), fg=FG_SECONDARY).pack()
             lbl.bind("<Button-1>", lambda e, idx=i, l=lbl: self._select_image(idx, l))
             lbl.bind("<Double-Button-1>", lambda e, idx=i: self._open_image(idx))
             self.gallery_labels.append(lbl)

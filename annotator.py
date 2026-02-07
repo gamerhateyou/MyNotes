@@ -7,6 +7,7 @@ import os
 import math
 import image_utils
 import platform_utils
+from gui.constants import BG_DARK, BG_SURFACE
 
 
 class AnnotationTool(tk.Toplevel):
@@ -31,6 +32,7 @@ class AnnotationTool(tk.Toplevel):
         self.scale_y = self.original_size[1] / self.display_size[1]
 
         self.geometry(f"{self.display_size[0] + 20}x{self.display_size[1] + 80}")
+        self.configure(bg=BG_SURFACE)
         self.grab_set()
 
         self.current_tool = "Freccia"
@@ -80,7 +82,7 @@ class AnnotationTool(tk.Toplevel):
         frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         self.canvas = tk.Canvas(frame, width=self.display_size[0], height=self.display_size[1],
-                                cursor="crosshair", bg="#333333")
+                                cursor="crosshair", bg=BG_DARK)
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
         self.photo = image_utils.pil_to_photo(self.display_image)
