@@ -4,7 +4,7 @@ import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QComboBox, QCheckBox, QListWidget, QPlainTextEdit, QMessageBox,
-    QFileDialog, QGroupBox, QSpinBox, QFrame, QWidget
+    QFileDialog, QGroupBox, QSpinBox, QFrame, QWidget, QTabWidget
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
@@ -797,7 +797,7 @@ class BackupRestoreDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Ripristina Backup")
         self.result = None
-        self.resize(650, 500)
+        self.resize(650, 520)
         self.setModal(True)
 
         import backup_utils
@@ -806,11 +806,18 @@ class BackupRestoreDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
 
-        layout.addWidget(QLabel("Backup disponibili:"))
+        # Tabs: Locale / Google Drive
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs)
+
+        # --- Tab Locale ---
+        local_tab = QWidget()
+        local_layout = QVBoxLayout(local_tab)
+        local_layout.setContentsMargins(8, 8, 8, 8)
 
         self.backup_list = QListWidget()
-        self.backup_list.currentRowChanged.connect(self._on_select)
-        layout.addWidget(self.backup_list)
+        self.backup_list.currentRowChanged.connect(self._on_local_select)
+        local_layout.addWidget(self.backup_list)
 
         detail_group = QGroupBox("Dettagli")
         detail_layout = QVBoxLayout(detail_group)
@@ -826,8 +833,33 @@ class BackupRestoreDialog(QDialog):
         detail_layout.addWidget(self.detail_checksum)
         self.detail_encrypted = QLabel("")
         detail_layout.addWidget(self.detail_encrypted)
-        layout.addWidget(detail_group)
+        local_layout.addWidget(detail_group)
 
+        self.tabs.addTab(local_tab, "Locale")
+
+        # --- Tab Google Drive ---
+        gdrive_tab = QWidget()
+        gdrive_layout = QVBoxLayout(gdrive_tab)
+        gdrive_layout.setContentsMargins(8, 8, 8, 8)
+
+        self.gdrive_list = QListWidget()
+        gdrive_layout.addWidget(self.gdrive_list)
+
+        gdrive_detail = QGroupBox("Dettagli")
+        gdrive_detail_layout = QVBoxLayout(gdrive_detail)
+        self.gdrive_detail_date = QLabel("Data: -")
+        gdrive_detail_layout.addWidget(self.gdrive_detail_date)
+        self.gdrive_detail_size = QLabel("Dimensione: -")
+        gdrive_detail_layout.addWidget(self.gdrive_detail_size)
+        self.gdrive_detail_encrypted = QLabel("")
+        gdrive_detail_layout.addWidget(self.gdrive_detail_encrypted)
+        gdrive_layout.addWidget(gdrive_detail)
+
+        self.gdrive_list.currentRowChanged.connect(self._on_gdrive_select)
+
+        self.tabs.addTab(gdrive_tab, "Google Drive")
+
+        # --- Buttons ---
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
         restore_btn = QPushButton("Ripristina")
@@ -838,6 +870,7 @@ class BackupRestoreDialog(QDialog):
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
 
+        # Load local backups
         settings = backup_utils.get_settings()
         backup_dir = settings.get("local_backup_dir", db.BACKUP_DIR)
         self.backups = db.get_backups(backup_dir)
@@ -847,13 +880,34 @@ class BackupRestoreDialog(QDialog):
             self.backup_list.addItem(
                 f"{b['date_str']}  ({size_kb:.0f} KB){enc_label}"
             )
-
         if not self.backups:
             self.backup_list.addItem("Nessun backup disponibile.")
 
+        # Load GDrive backups
+        self.gdrive_backups = []
+        if backup_utils.is_gdrive_configured():
+            self.gdrive_list.addItem("Caricamento...")
+            QTimer.singleShot(100, self._load_gdrive_backups)
+        else:
+            self.gdrive_list.addItem("Google Drive non configurato.")
+            self.gdrive_list.addItem("Vai in Backup > Impostazioni.")
+
         self.exec()
 
-    def _on_select(self, row):
+    def _load_gdrive_backups(self):
+        self.gdrive_list.clear()
+        self.gdrive_backups = self.backup_utils.list_gdrive_backups()
+        if not self.gdrive_backups:
+            self.gdrive_list.addItem("Nessun backup su Google Drive.")
+            return
+        for b in self.gdrive_backups:
+            enc_label = " [crittografato]" if b["encrypted"] else ""
+            size_kb = b["size"] / 1024
+            self.gdrive_list.addItem(
+                f"{b['date_str']}  ({size_kb:.0f} KB){enc_label}"
+            )
+
+    def _on_local_select(self, row):
         if row < 0 or not self.backups:
             return
         b = self.backups[row]
@@ -885,7 +939,25 @@ class BackupRestoreDialog(QDialog):
         self.detail_checksum.setText(f"Checksum: {msg_cs}")
         self.detail_checksum.setStyleSheet(f"color: {color_cs};")
 
+    def _on_gdrive_select(self, row):
+        if row < 0 or not self.gdrive_backups:
+            return
+        b = self.gdrive_backups[row]
+        self.gdrive_detail_date.setText(f"Data: {b['date_str']}")
+        size_kb = b["size"] / 1024
+        self.gdrive_detail_size.setText(f"Dimensione: {size_kb:.1f} KB")
+        if b["encrypted"]:
+            self.gdrive_detail_encrypted.setText("Crittografato: Si'")
+        else:
+            self.gdrive_detail_encrypted.setText("")
+
     def _restore(self):
+        if self.tabs.currentIndex() == 0:
+            self._restore_local()
+        else:
+            self._restore_gdrive()
+
+    def _restore_local(self):
         row = self.backup_list.currentRow()
         if row < 0 or not self.backups:
             return
@@ -907,4 +979,39 @@ class BackupRestoreDialog(QDialog):
             return
 
         self.result = {"path": b["path"], "password": password}
+        self.accept()
+
+    def _restore_gdrive(self):
+        row = self.gdrive_list.currentRow()
+        if row < 0 or not self.gdrive_backups:
+            return
+        b = self.gdrive_backups[row]
+
+        msg = ("Il backup verra' scaricato da Google Drive.\n"
+               "Il database attuale verra' sostituito.\n"
+               "Un backup di sicurezza verra' creato automaticamente.\n\n"
+               "Continuare?")
+        if QMessageBox.question(
+            self, "Conferma ripristino", msg
+        ) != QMessageBox.Yes:
+            return
+
+        # Download to temp location
+        import tempfile
+        tmp_path = os.path.join(tempfile.gettempdir(), b["name"])
+        ok, msg_dl = self.backup_utils.download_gdrive_backup(b["id"], tmp_path)
+        if not ok:
+            QMessageBox.critical(self, "Errore", msg_dl)
+            return
+
+        password = None
+        if b["encrypted"]:
+            pwd_dlg = PasswordDialog(self, title="Password backup")
+            if not pwd_dlg.result:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+                return
+            password = pwd_dlg.result
+
+        self.result = {"path": tmp_path, "password": password}
         self.accept()

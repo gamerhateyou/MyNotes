@@ -448,6 +448,68 @@ def do_gdrive_backup(callback=None):
     threading.Thread(target=_upload, daemon=True).start()
 
 
+def list_gdrive_backups():
+    """Lista backup disponibili su Google Drive. Ritorna lista di dict."""
+    if not is_gdrive_configured():
+        return []
+    try:
+        service = _get_gdrive_service()
+        settings = get_settings()
+        folder_name = settings.get("gdrive_folder_name", "MyNotes Backup")
+        folder_id = _get_or_create_folder(service, folder_name)
+
+        results = service.files().list(
+            q=f"'{folder_id}' in parents and trashed=false",
+            spaces="drive",
+            fields="files(id, name, size, createdTime)",
+            orderBy="createdTime desc",
+            pageSize=100,
+        ).execute()
+
+        backups = []
+        for f in results.get("files", []):
+            name = f.get("name", "")
+            if not (name.endswith(".db") or name.endswith(".db.enc")):
+                continue
+            try:
+                ct = datetime.strptime(f["createdTime"], "%Y-%m-%dT%H:%M:%S.%fZ")
+                date_str = ct.strftime("%Y-%m-%d %H:%M:%S")
+            except (ValueError, KeyError):
+                date_str = "?"
+            backups.append({
+                "id": f["id"],
+                "name": name,
+                "size": int(f.get("size", 0)),
+                "date_str": date_str,
+                "encrypted": name.endswith(".db.enc"),
+            })
+        return backups
+    except Exception as e:
+        log.warning("Errore lista backup GDrive: %s", e)
+        return []
+
+
+def download_gdrive_backup(file_id, dest_path):
+    """Scarica un backup da Google Drive. Ritorna (success, message)."""
+    try:
+        service = _get_gdrive_service()
+        from googleapiclient.http import MediaIoBaseDownload
+        import io
+
+        request = service.files().get_media(fileId=file_id)
+        with open(dest_path, "wb") as f:
+            downloader = MediaIoBaseDownload(f, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+
+        log.info("Backup GDrive scaricato: %s", dest_path)
+        return True, "Download completato"
+    except Exception as e:
+        log.warning("Download backup GDrive fallito: %s", e)
+        return False, f"Errore download: {e}"
+
+
 def do_full_backup(callback=None):
     """Local backup + optional Google Drive."""
     backup_path = do_local_backup()
