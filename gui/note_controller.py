@@ -24,6 +24,7 @@ class NoteController:
         self._drag_label = None
         self._drag_highlight_idx = -1
         self._deferred_select = None
+        self._drag_note_ids = []
 
     # --- Data Loading ---
 
@@ -137,6 +138,9 @@ class NoteController:
         idx = self.app.note_listbox.nearest(event.y)
         if idx < 0 or idx >= len(self.app.notes):
             return
+        bbox = self.app.note_listbox.bbox(idx)
+        if bbox is None or event.y > bbox[1] + bbox[3]:
+            return
         note_id = self.app.notes[idx]["id"]
         self.app.open_in_window(note_id)
 
@@ -148,11 +152,20 @@ class NoteController:
         self._drag_start_y = event.y_root
         self._drag_active = False
         self._deferred_select = None
+        self._drag_note_ids = []
 
         app = self.app
         idx = app.note_listbox.nearest(event.y)
         if idx < 0 or idx >= len(app.notes):
             return
+
+        # Click in empty area below last item — deselect all
+        bbox = app.note_listbox.bbox(idx)
+        if bbox is None or event.y > bbox[1] + bbox[3]:
+            app.note_listbox.selection_clear(0, tk.END)
+            self._clear_editor()
+            app.status_var.set(f"{len(app.notes)} nota/e")
+            return "break"
 
         sel = app.note_listbox.curselection()
         # Clicking on a selected item in multi-selection without modifiers:
@@ -177,6 +190,8 @@ class NoteController:
             if not sel:
                 return
             self._drag_active = True
+            # Store note IDs now — default B1-Motion may alter selection later
+            self._drag_note_ids = [app.notes[i]["id"] for i in sel]
             # Create floating label
             count = len(sel)
             text = f" {count} nota" if count == 1 else f" {count} note"
@@ -213,6 +228,8 @@ class NoteController:
                 self._restore_cat_color(self._drag_highlight_idx)
                 self._drag_highlight_idx = -1
 
+        return "break"  # Prevent default B1-Motion from extending selection
+
     def _on_drag_drop(self, event):
         """Handle drop: move selected notes to the target category."""
         if not self._drag_active:
@@ -246,11 +263,9 @@ class NoteController:
                 # User category (indices 2..N-1)
                 target_id = app.categories[idx - 2]["id"]
 
-            # Move all selected notes
-            sel = app.note_listbox.curselection()
+            # Move all selected notes (use IDs stored at drag start)
             self.save_current()
-            for i in sel:
-                note_id = app.notes[i]["id"]
+            for note_id in self._drag_note_ids:
                 db.update_note(note_id, category_id=target_id)
 
             # Reload
@@ -277,6 +292,7 @@ class NoteController:
             self._drag_highlight_idx = -1
         self._drag_active = False
         self._deferred_select = None
+        self._drag_note_ids = []
 
     def _restore_cat_color(self, idx):
         """Restore the default background color for a category listbox item."""
