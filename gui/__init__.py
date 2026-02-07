@@ -36,6 +36,7 @@ class MyNotesApp:
         self._image_refs = []
         self._version_counter = 0
         self._decrypted_cache = {}
+        self._detached_windows = {}
 
         # Build UI
         self._setup_styles()
@@ -61,7 +62,24 @@ class MyNotesApp:
         self.root.after(2000, self.update_ctl.check_silent)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    def open_in_window(self, note_id):
+        if note_id is None:
+            return
+        if note_id in self._detached_windows:
+            win = self._detached_windows[note_id]
+            win.lift()
+            win.focus_force()
+            return
+        self.notes_ctl.save_current()
+        if self.current_note_id == note_id:
+            self.notes_ctl._clear_editor()
+        from gui.note_window import NoteWindow
+        win = NoteWindow(self, note_id)
+        self._detached_windows[note_id] = win
+
     def _on_close(self):
+        for win in list(self._detached_windows.values()):
+            win._on_close()
         self.notes_ctl.save_current()
         self._backup_scheduler.stop()
         settings = backup_utils.get_settings()

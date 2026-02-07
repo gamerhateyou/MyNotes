@@ -121,10 +121,19 @@ class NoteController:
         app.current_tag_id = None if idx <= 0 else app.all_tags[idx - 1]["id"]
         self.load_notes()
 
+    def on_note_double_click(self, event):
+        idx = self.app.note_listbox.nearest(event.y)
+        if idx < 0 or idx >= len(self.app.notes):
+            return
+        note_id = self.app.notes[idx]["id"]
+        self.app.open_in_window(note_id)
+
     # --- Editor ---
 
     def display_note(self, note_id):
         app = self.app
+        if note_id in app._detached_windows:
+            return  # nota aperta in finestra separata
         self.save_current()
         app.current_note_id = note_id
         # Clear decrypted cache for previous note
@@ -243,6 +252,27 @@ class NoteController:
 
     # --- Context Menu ---
 
+    def show_category_context_menu(self, event):
+        app = self.app
+        idx = app.cat_listbox.nearest(event.y)
+        if idx < 0:
+            return
+        app.cat_listbox.selection_clear(0, tk.END)
+        app.cat_listbox.selection_set(idx)
+        self.on_category_select()
+
+        menu = tk.Menu(app.root, tearoff=0)
+        last_idx = app.cat_listbox.size() - 1
+        is_user_category = 2 <= idx < last_idx
+
+        if is_user_category:
+            menu.add_command(label="Rinomina", command=self.rename_category)
+            menu.add_command(label="Elimina", command=self.delete_category)
+            menu.add_separator()
+
+        menu.add_command(label="Nuova Categoria", command=self.new_category)
+        menu.tk_popup(event.x_root, event.y_root)
+
     def show_context_menu(self, event):
         app = self.app
         # Select the note under cursor
@@ -263,6 +293,9 @@ class NoteController:
             menu.add_command(label="Ripristina", command=lambda: self._restore_from_trash())
             menu.add_command(label="Elimina definitivamente", command=lambda: self._permanent_delete())
         else:
+            menu.add_command(label="Apri in finestra",
+                             command=lambda nid=app.current_note_id: app.open_in_window(nid))
+            menu.add_separator()
             pin_label = "Sgancia" if note["is_pinned"] else "Fissa in cima"
             fav_label = "Rimuovi dai preferiti" if note["is_favorite"] else "Aggiungi ai preferiti"
             menu.add_command(label=pin_label, command=self.toggle_pin)

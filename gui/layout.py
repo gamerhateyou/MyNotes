@@ -68,6 +68,7 @@ def build_main_layout(app):
     )
     app.cat_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
     app.cat_listbox.bind("<<ListboxSelect>>", lambda e: app.notes_ctl.on_category_select())
+    app.cat_listbox.bind("<Button-3>", lambda e: app.notes_ctl.show_category_context_menu(e))
 
     # Center - note list
     center = ttk.Frame(main_pane)
@@ -85,6 +86,7 @@ def build_main_layout(app):
     app.note_listbox.bind("<<ListboxSelect>>", lambda e: app.notes_ctl.on_note_select())
     app.note_listbox.bind("<Delete>", lambda e: app.notes_ctl.delete_note())
     app.note_listbox.bind("<Button-3>", lambda e: app.notes_ctl.show_context_menu(e))
+    app.note_listbox.bind("<Double-Button-1>", lambda e: app.notes_ctl.on_note_double_click(e))
 
     # Right panel - editor
     editor_frame = ttk.Frame(main_pane)

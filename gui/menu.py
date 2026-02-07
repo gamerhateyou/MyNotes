@@ -29,6 +29,9 @@ def build_menu(app):
     menubar.add_cascade(label="Categorie", menu=cat_menu)
 
     note_menu = tk.Menu(menubar, tearoff=0)
+    note_menu.add_command(label="Apri in finestra separata",
+                          command=lambda: app.open_in_window(app.current_note_id) if app.current_note_id else None)
+    note_menu.add_separator()
     note_menu.add_command(label="Fissa/Sgancia nota", command=lambda: app.notes_ctl.toggle_pin(), accelerator="Ctrl+P")
     note_menu.add_command(label="Preferita/Non preferita", command=lambda: app.notes_ctl.toggle_favorite(), accelerator="Ctrl+D")
     note_menu.add_separator()
