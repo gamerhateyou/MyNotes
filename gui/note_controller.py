@@ -109,6 +109,8 @@ class NoteController:
         self.load_notes()
 
     def on_note_select(self):
+        if getattr(self.app, '_restoring_selection', False):
+            return
         sel = self.app.note_listbox.curselection()
         if not sel:
             return
@@ -119,6 +121,18 @@ class NoteController:
             self.save_current()
             self._clear_editor()
             self.app.status_var.set(f"{len(sel)} note selezionate")
+
+    def focus_search(self):
+        """Focus sulla barra di ricerca e seleziona tutto il testo."""
+        self.app.search_entry.focus_set()
+        self.app.search_entry.selection_range(0, tk.END)
+
+    def clear_search(self):
+        """Pulisce la ricerca e torna al focus sull'editor."""
+        if self.app.search_var.get():
+            self.app.search_var.set("")
+        else:
+            self.app.text_editor.focus_set()
 
     def on_search(self):
         app = self.app
@@ -172,8 +186,13 @@ class NoteController:
         # suppress default deselection to preserve selection for drag
         if (len(sel) > 1 and idx in sel
                 and not (event.state & 0x4) and not (event.state & 0x1)):
+            self._drag_note_ids = [app.notes[i]["id"] for i in sel]
             self._deferred_select = idx
             return "break"
+
+        # Pre-capture clicked note ID for drag (fallback if selection is
+        # cleared by save_current's listbox update before threshold is met)
+        self._drag_note_ids = [app.notes[idx]["id"]]
 
     def _on_drag_motion(self, event):
         app = self.app
@@ -185,15 +204,18 @@ class NoteController:
             dx = event.x_root - self._drag_start_x
             dy = event.y_root - self._drag_start_y
             if abs(dx) < 5 and abs(dy) < 5:
-                return
-            sel = app.note_listbox.curselection()
-            if not sel:
-                return
+                return "break"
+            if not self._drag_note_ids:
+                return "break"
             self._drag_active = True
-            # Store note IDs now — default B1-Motion may alter selection later
-            self._drag_note_ids = [app.notes[i]["id"] for i in sel]
+            # Refine note IDs from current selection if available
+            # (handles Shift/Ctrl+Click then drag)
+            sel = app.note_listbox.curselection()
+            if sel:
+                self._drag_note_ids = [app.notes[i]["id"] for i in sel
+                                       if i < len(app.notes)]
             # Create floating label
-            count = len(sel)
+            count = len(self._drag_note_ids)
             text = f" {count} nota" if count == 1 else f" {count} note"
             self._drag_label = tk.Label(
                 app.root, text=text, bg="#4a90d9", fg="white",
@@ -201,7 +223,7 @@ class NoteController:
             )
 
         if not self._drag_active:
-            return
+            return "break"
 
         # Position floating label near cursor
         self._drag_label.place(x=event.x_root - app.root.winfo_rootx() + 12,
@@ -416,8 +438,13 @@ class NoteController:
                 prefix += "[*] "
             if note["is_encrypted"]:
                 prefix += "[E] "
-            app.note_listbox.delete(idx)
-            app.note_listbox.insert(idx, f"{prefix}{title}  [{date_str}]")
+            new_text = f"{prefix}{title}  [{date_str}]"
+            if app.note_listbox.get(idx) != new_text:
+                app._restoring_selection = True
+                app.note_listbox.delete(idx)
+                app.note_listbox.insert(idx, new_text)
+                app.note_listbox.selection_set(idx)
+                app._restoring_selection = False
 
         app.status_var.set("Salvato")
 

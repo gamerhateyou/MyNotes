@@ -41,7 +41,8 @@ def build_toolbar(app):
     ttk.Label(toolbar, text="  Cerca:").pack(side=tk.LEFT, padx=(15, 5))
     app.search_var = tk.StringVar()
     app.search_var.trace_add("write", lambda *_: app.notes_ctl.on_search())
-    ttk.Entry(toolbar, textvariable=app.search_var, width=18).pack(side=tk.LEFT)
+    app.search_entry = ttk.Entry(toolbar, textvariable=app.search_var, width=18)
+    app.search_entry.pack(side=tk.LEFT)
 
     ttk.Label(toolbar, text="  Tag:").pack(side=tk.LEFT, padx=(10, 5))
     app.tag_filter_var = tk.StringVar()

@@ -150,6 +150,19 @@ class NoteWindow(tk.Toplevel):
         ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN,
                   anchor=tk.W, padding=(8, 3)).pack(fill=tk.X, side=tk.BOTTOM)
 
+        # Keyboard shortcuts
+        self.bind("<Control-s>", lambda e: self.save_current())
+        self.bind("<Control-t>", lambda e: self.manage_tags())
+        self.bind("<Control-h>", lambda e: self.show_versions())
+        self.bind("<Control-p>", lambda e: self.toggle_pin())
+        self.bind("<Control-d>", lambda e: self.toggle_favorite())
+        self.bind("<Control-l>", lambda e: self.insert_checklist())
+        self.bind("<Control-i>", lambda e: self.insert_image())
+        self.bind("<Control-Shift-S>", lambda e: self.take_screenshot())
+        self.bind("<Control-Shift-R>", lambda e: self.take_screenshot_region())
+        self.bind("<Control-Shift-A>", lambda e: self.record_audio())
+        self.bind("<Control-w>", lambda e: self._on_close())
+
     # ─── Display ───────────────────────────────────────────────
 
     def _display_note(self):
