@@ -17,6 +17,12 @@ from dialogs import (CategoryDialog, NoteDialog, TagManagerDialog, AttachmentDia
 class NoteController:
     def __init__(self, app):
         self.app = app
+        # Drag-and-drop state
+        self._drag_active = False
+        self._drag_start_x = 0
+        self._drag_start_y = 0
+        self._drag_label = None
+        self._drag_highlight_idx = -1
 
     # --- Data Loading ---
 
@@ -133,6 +139,128 @@ class NoteController:
         note_id = self.app.notes[idx]["id"]
         self.app.open_in_window(note_id)
 
+    # --- Drag-and-Drop ---
+
+    def _on_drag_start(self, event):
+        """Save starting position; drag activates only after movement threshold."""
+        self._drag_start_x = event.x_root
+        self._drag_start_y = event.y_root
+        self._drag_active = False
+
+    def _on_drag_motion(self, event):
+        app = self.app
+        dx = event.x_root - self._drag_start_x
+        dy = event.y_root - self._drag_start_y
+
+        # Activate drag only after 5px movement threshold
+        if not self._drag_active:
+            if abs(dx) < 5 and abs(dy) < 5:
+                return
+            sel = app.note_listbox.curselection()
+            if not sel or app.show_trash:
+                return
+            self._drag_active = True
+            # Create floating label
+            count = len(sel)
+            text = f" {count} nota" if count == 1 else f" {count} note"
+            self._drag_label = tk.Label(
+                app.root, text=text, bg="#4a90d9", fg="white",
+                font=(None, 10, "bold"), padx=6, pady=2, relief=tk.RAISED
+            )
+
+        if not self._drag_active:
+            return
+
+        # Position floating label near cursor
+        self._drag_label.place(x=event.x_root - app.root.winfo_rootx() + 12,
+                               y=event.y_root - app.root.winfo_rooty() + 12)
+
+        # Check if cursor is over the category listbox
+        widget = app.root.winfo_containing(event.x_root, event.y_root)
+        if widget is app.cat_listbox:
+            # Highlight the category under cursor
+            y_in_listbox = event.y_root - app.cat_listbox.winfo_rooty()
+            idx = app.cat_listbox.nearest(y_in_listbox)
+            if idx != self._drag_highlight_idx:
+                # Remove previous highlight
+                if self._drag_highlight_idx >= 0:
+                    self._restore_cat_color(self._drag_highlight_idx)
+                # Apply new highlight (skip Preferite and Cestino)
+                last_idx = app.cat_listbox.size() - 1
+                if idx != 1 and idx != last_idx:
+                    app.cat_listbox.itemconfig(idx, bg="#3d6fa5")
+                self._drag_highlight_idx = idx
+        else:
+            # Cursor left category listbox, remove highlight
+            if self._drag_highlight_idx >= 0:
+                self._restore_cat_color(self._drag_highlight_idx)
+                self._drag_highlight_idx = -1
+
+    def _on_drag_drop(self, event):
+        """Handle drop: move selected notes to the target category."""
+        if not self._drag_active:
+            self._drag_cleanup()
+            return
+
+        app = self.app
+        widget = app.root.winfo_containing(event.x_root, event.y_root)
+
+        if widget is app.cat_listbox:
+            y_in_listbox = event.y_root - app.cat_listbox.winfo_rooty()
+            idx = app.cat_listbox.nearest(y_in_listbox)
+            last_idx = app.cat_listbox.size() - 1
+
+            # Ignore drop on Preferite (1) and Cestino (last)
+            if idx == 1 or idx == last_idx:
+                self._drag_cleanup()
+                return
+
+            # Determine target category_id
+            if idx == 0:
+                # "Tutte le note" -> remove category
+                target_id = db._UNSET
+            else:
+                # User category (indices 2..N-1)
+                target_id = app.categories[idx - 2]["id"]
+
+            # Move all selected notes
+            sel = app.note_listbox.curselection()
+            self.save_current()
+            for i in sel:
+                note_id = app.notes[i]["id"]
+                db.update_note(note_id, category_id=target_id)
+
+            # Reload
+            app.current_note_id = None
+            self.load_categories()
+
+            # Re-select the target category to show moved notes
+            if idx == 0:
+                app.cat_listbox.selection_set(0)
+            else:
+                app.cat_listbox.selection_set(idx)
+            self.on_category_select()
+
+        self._drag_cleanup()
+
+    def _drag_cleanup(self):
+        """Remove floating label and restore category highlight."""
+        if self._drag_label:
+            self._drag_label.place_forget()
+            self._drag_label.destroy()
+            self._drag_label = None
+        if self._drag_highlight_idx >= 0:
+            self._restore_cat_color(self._drag_highlight_idx)
+            self._drag_highlight_idx = -1
+        self._drag_active = False
+
+    def _restore_cat_color(self, idx):
+        """Restore the default background color for a category listbox item."""
+        app = self.app
+        if idx < 0 or idx >= app.cat_listbox.size():
+            return
+        app.cat_listbox.itemconfig(idx, bg=app.cat_listbox["bg"])
+
     # --- Editor ---
 
     def display_note(self, note_id):
@@ -238,9 +366,8 @@ class NoteController:
         else:
             db.update_note(app.current_note_id, title=title, content=content)
 
-        sel = app.note_listbox.curselection()
-        if sel:
-            idx = sel[0]
+        idx = next((i for i, n in enumerate(app.notes) if n["id"] == app.current_note_id), None)
+        if idx is not None:
             date_str = datetime.now().isoformat()[:10]
             prefix = ""
             if note["is_pinned"]:
@@ -251,7 +378,6 @@ class NoteController:
                 prefix += "[E] "
             app.note_listbox.delete(idx)
             app.note_listbox.insert(idx, f"{prefix}{title}  [{date_str}]")
-            app.note_listbox.selection_set(idx)
 
         app.status_var.set("Salvato")
 

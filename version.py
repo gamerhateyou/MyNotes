@@ -1,2 +1,2 @@
-VERSION = "2.6.0"
+VERSION = "2.7.0"
 GITHUB_REPO = "gamerhateyou/MyNotes"

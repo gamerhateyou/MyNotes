@@ -4,6 +4,9 @@ import sys
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 
+# Sentinel to explicitly set a field to NULL (distinct from None which means "keep existing")
+_UNSET = object()
+
 # Portable: tutto relativo alla cartella dell'app
 if getattr(sys, 'frozen', False):
     APP_DIR = os.path.dirname(sys.executable)
@@ -208,12 +211,19 @@ def update_note(note_id, title=None, content=None, category_id=None):
         if not note:
             return
         now = datetime.now().isoformat()
+        # _UNSET sentinel means "set to NULL explicitly"
+        if category_id is _UNSET:
+            effective_category = None
+        elif category_id is not None:
+            effective_category = category_id
+        else:
+            effective_category = note["category_id"]
         conn.execute(
             "UPDATE notes SET title = ?, content = ?, category_id = ?, updated_at = ? WHERE id = ?",
             (
                 title if title is not None else note["title"],
                 content if content is not None else note["content"],
-                category_id if category_id is not None else note["category_id"],
+                effective_category,
                 now, note_id,
             ),
         )

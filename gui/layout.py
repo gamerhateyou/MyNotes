@@ -88,6 +88,11 @@ def build_main_layout(app):
     app.note_listbox.bind("<Button-3>", lambda e: app.notes_ctl.show_context_menu(e))
     app.note_listbox.bind("<Double-Button-1>", lambda e: app.notes_ctl.on_note_double_click(e))
 
+    # Drag-and-drop to category
+    app.note_listbox.bind("<ButtonPress-1>", lambda e: app.notes_ctl._on_drag_start(e))
+    app.note_listbox.bind("<B1-Motion>", lambda e: app.notes_ctl._on_drag_motion(e))
+    app.note_listbox.bind("<ButtonRelease-1>", lambda e: app.notes_ctl._on_drag_drop(e))
+
     # Right panel - editor
     editor_frame = ttk.Frame(main_pane)
     main_pane.add(editor_frame, weight=3)
