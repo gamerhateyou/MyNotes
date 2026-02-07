@@ -26,6 +26,7 @@ def build_menu(app):
     cat_menu.add_command(label="Nuova Categoria", command=lambda: app.notes_ctl.new_category())
     cat_menu.add_command(label="Rinomina Categoria", command=lambda: app.notes_ctl.rename_category())
     cat_menu.add_command(label="Elimina Categoria", command=lambda: app.notes_ctl.delete_category())
+    cat_menu.add_command(label="Svuota Categoria", command=lambda: app.notes_ctl.empty_category())
     menubar.add_cascade(label="Categorie", menu=cat_menu)
 
     note_menu = tk.Menu(menubar, tearoff=0)

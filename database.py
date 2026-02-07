@@ -288,6 +288,63 @@ def purge_trash(days=TRASH_PURGE_DAYS):
             conn.commit()
 
 
+def soft_delete_notes(note_ids):
+    if not note_ids:
+        return
+    now = datetime.now().isoformat()
+    with _connect() as conn:
+        placeholders = ",".join("?" * len(note_ids))
+        conn.execute(
+            f"UPDATE notes SET is_deleted = 1, deleted_at = ? WHERE id IN ({placeholders})",
+            [now] + list(note_ids),
+        )
+        conn.commit()
+
+
+def permanent_delete_notes(note_ids):
+    if not note_ids:
+        return
+    with _connect() as conn:
+        placeholders = ",".join("?" * len(note_ids))
+        attachments = conn.execute(
+            f"SELECT filename FROM attachments WHERE note_id IN ({placeholders})",
+            list(note_ids),
+        ).fetchall()
+        for att in attachments:
+            path = os.path.join(ATTACHMENTS_DIR, att["filename"])
+            if os.path.exists(path):
+                os.remove(path)
+        conn.execute(f"DELETE FROM notes WHERE id IN ({placeholders})", list(note_ids))
+        conn.commit()
+
+
+def restore_notes(note_ids):
+    if not note_ids:
+        return
+    with _connect() as conn:
+        placeholders = ",".join("?" * len(note_ids))
+        conn.execute(
+            f"UPDATE notes SET is_deleted = 0, deleted_at = NULL WHERE id IN ({placeholders})",
+            list(note_ids),
+        )
+        conn.commit()
+
+
+def get_note_ids_by_category(cat_id):
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id FROM notes WHERE category_id = ? AND is_deleted = 0", (cat_id,)
+        ).fetchall()
+        return [r["id"] for r in rows]
+
+
+def delete_category_with_notes(cat_id):
+    note_ids = get_note_ids_by_category(cat_id)
+    if note_ids:
+        soft_delete_notes(note_ids)
+    delete_category(cat_id)
+
+
 def get_trash_count():
     with _connect() as conn:
         row = conn.execute("SELECT COUNT(*) as c FROM notes WHERE is_deleted = 1").fetchone()

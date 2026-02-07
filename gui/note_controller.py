@@ -104,8 +104,13 @@ class NoteController:
         sel = self.app.note_listbox.curselection()
         if not sel:
             return
-        note = self.app.notes[sel[0]]
-        self.display_note(note["id"])
+        if len(sel) == 1:
+            note = self.app.notes[sel[0]]
+            self.display_note(note["id"])
+        else:
+            self.save_current()
+            self._clear_editor()
+            self.app.status_var.set(f"{len(sel)} note selezionate")
 
     def on_search(self):
         app = self.app
@@ -268,6 +273,7 @@ class NoteController:
         if is_user_category:
             menu.add_command(label="Rinomina", command=self.rename_category)
             menu.add_command(label="Elimina", command=self.delete_category)
+            menu.add_command(label="Svuota categoria", command=self.empty_category)
             menu.add_separator()
 
         menu.add_command(label="Nuova Categoria", command=self.new_category)
@@ -275,10 +281,19 @@ class NoteController:
 
     def show_context_menu(self, event):
         app = self.app
-        # Select the note under cursor
         idx = app.note_listbox.nearest(event.y)
         if idx < 0 or idx >= len(app.notes):
             return
+
+        current_sel = app.note_listbox.curselection()
+        if idx in current_sel and len(current_sel) > 1:
+            # Click destro dentro selezione multipla — mantieni selezione
+            menu = tk.Menu(app.root, tearoff=0)
+            self._build_multi_context_menu(menu, current_sel)
+            menu.tk_popup(event.x_root, event.y_root)
+            return
+
+        # Click destro su singola nota — seleziona solo quella
         app.note_listbox.selection_clear(0, tk.END)
         app.note_listbox.selection_set(idx)
         self.on_note_select()
@@ -338,6 +353,78 @@ class NoteController:
             app.current_note_id = None
             self.load_categories()
             self.load_notes()
+
+    # --- Multi-select actions ---
+
+    def _build_multi_context_menu(self, menu, sel):
+        n = len(sel)
+        app = self.app
+        if app.show_trash:
+            menu.add_command(label=f"Ripristina {n} note",
+                             command=lambda: self._restore_multiple(sel))
+            menu.add_command(label=f"Elimina definitivamente {n} note",
+                             command=lambda: self._permanent_delete_multiple(sel))
+        else:
+            menu.add_command(label=f"Sposta {n} note nel cestino",
+                             command=lambda: self._soft_delete_multiple(sel))
+
+    def _soft_delete_multiple(self, sel):
+        app = self.app
+        n = len(sel)
+        if not messagebox.askyesno("Conferma", f"Spostare {n} note nel cestino?"):
+            return
+        self.save_current()
+        ids = [app.notes[i]["id"] for i in sel]
+        db.soft_delete_notes(ids)
+        app.current_note_id = None
+        self.load_categories()
+        self.load_notes()
+
+    def _permanent_delete_multiple(self, sel):
+        app = self.app
+        n = len(sel)
+        if not messagebox.askyesno(
+            "Conferma",
+            f"Eliminare definitivamente {n} note?\nQuesta azione non puo' essere annullata."
+        ):
+            return
+        self.save_current()
+        ids = [app.notes[i]["id"] for i in sel]
+        db.permanent_delete_notes(ids)
+        app.current_note_id = None
+        self.load_categories()
+        self.load_notes()
+
+    def _restore_multiple(self, sel):
+        app = self.app
+        ids = [app.notes[i]["id"] for i in sel]
+        db.restore_notes(ids)
+        app.current_note_id = None
+        self.load_categories()
+        self.load_notes()
+
+    def empty_category(self):
+        app = self.app
+        if app.current_category_id is None:
+            messagebox.showinfo("Info", "Seleziona una categoria dalla sidebar.")
+            return
+        cat = next((c for c in app.categories if c["id"] == app.current_category_id), None)
+        if not cat:
+            return
+        note_ids = db.get_note_ids_by_category(app.current_category_id)
+        if not note_ids:
+            messagebox.showinfo("Info", f"La categoria '{cat['name']}' e' gia' vuota.")
+            return
+        if not messagebox.askyesno(
+            "Svuota Categoria",
+            f"Spostare {len(note_ids)} nota/e di '{cat['name']}' nel cestino?"
+        ):
+            return
+        self.save_current()
+        db.soft_delete_notes(note_ids)
+        app.current_note_id = None
+        self.load_categories()
+        self.load_notes()
 
     # --- Checklist ---
 
@@ -439,6 +526,19 @@ class NoteController:
 
     def delete_note(self):
         app = self.app
+        sel = app.note_listbox.curselection()
+        if not sel:
+            return
+
+        # Multi-selezione
+        if len(sel) > 1:
+            if app.show_trash:
+                self._permanent_delete_multiple(sel)
+            else:
+                self._soft_delete_multiple(sel)
+            return
+
+        # Singola nota — comportamento originale
         if app.current_note_id is None:
             return
         note = db.get_note(app.current_note_id)
@@ -503,11 +603,30 @@ class NoteController:
         cat = next((c for c in app.categories if c["id"] == app.current_category_id), None)
         if not cat:
             return
-        if messagebox.askyesno("Conferma", f"Eliminare '{cat['name']}'?\nLe note non verranno eliminate."):
+
+        note_ids = db.get_note_ids_by_category(app.current_category_id)
+        if note_ids:
+            action = messagebox.askyesnocancel(
+                "Elimina Categoria",
+                f"La categoria '{cat['name']}' contiene {len(note_ids)} nota/e.\n\n"
+                f"Si = Elimina categoria e sposta note nel cestino\n"
+                f"No = Elimina solo la categoria (le note restano)\n"
+                f"Annulla = Non fare nulla"
+            )
+            if action is True:
+                db.delete_category_with_notes(app.current_category_id)
+            elif action is False:
+                db.delete_category(app.current_category_id)
+            else:
+                return
+        else:
+            if not messagebox.askyesno("Conferma", f"Eliminare la categoria '{cat['name']}'?"):
+                return
             db.delete_category(app.current_category_id)
-            app.current_category_id = None
-            self.load_categories()
-            self.load_notes()
+
+        app.current_category_id = None
+        self.load_categories()
+        self.load_notes()
 
     # --- Tags & Attachments ---
 

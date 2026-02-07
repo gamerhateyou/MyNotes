@@ -80,7 +80,7 @@ def build_main_layout(app):
     app.note_listbox = tk.Listbox(
         center, font=(UI_FONT, 10), selectbackground="#4a90d9",
         selectforeground="#ffffff", borderwidth=0, highlightthickness=1,
-        highlightcolor="#cccccc"
+        highlightcolor="#cccccc", selectmode=tk.EXTENDED
     )
     app.note_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
     app.note_listbox.bind("<<ListboxSelect>>", lambda e: app.notes_ctl.on_note_select())
