@@ -230,6 +230,11 @@ def _apply_files(source_dir, dest_dir):
                 shutil.rmtree(dst)
             shutil.copytree(src, dst)
         else:
+            # Su Linux, sovrascrivere un eseguibile in esecuzione causa
+            # ETXTBSY (errno 26). Rimuovere prima libera il nome dal
+            # filesystem (l'inode resta valido per il processo corrente).
+            if os.path.exists(dst):
+                os.remove(dst)
             shutil.copy2(src, dst)
 
 
