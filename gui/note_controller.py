@@ -174,7 +174,7 @@ class NoteController:
             if abs(dx) < 5 and abs(dy) < 5:
                 return
             sel = app.note_listbox.curselection()
-            if not sel or len(sel) < 2:
+            if not sel:
                 return
             self._drag_active = True
             # Create floating label
@@ -421,9 +421,20 @@ class NoteController:
         is_user_category = 2 <= idx < last_idx
 
         if is_user_category:
+            cat_id = app.categories[idx - 2]["id"]
             menu.add_command(label="Rinomina", command=self.rename_category)
             menu.add_command(label="Elimina", command=self.delete_category)
             menu.add_command(label="Svuota categoria", command=self.empty_category)
+            # Submenu "Sposta note in" con altre categorie
+            move_menu = tk.Menu(menu, tearoff=0)
+            move_menu.add_command(label="Nessuna categoria",
+                                  command=lambda cid=cat_id: self._move_category_notes_to(cid, db._UNSET))
+            for cat in app.categories:
+                if cat["id"] != cat_id:
+                    move_menu.add_command(
+                        label=cat["name"],
+                        command=lambda from_id=cat_id, to_id=cat["id"]: self._move_category_notes_to(from_id, to_id))
+            menu.add_cascade(label="Sposta note in", menu=move_menu)
             menu.add_separator()
 
         menu.add_command(label="Nuova Categoria", command=self.new_category)
@@ -470,6 +481,12 @@ class NoteController:
             menu.add_command(label="Allegati...", command=self.manage_attachments)
             menu.add_command(label="Cronologia versioni...", command=self.show_versions)
             menu.add_separator()
+            menu.add_command(label="Inserisci checklist", command=self.insert_checklist)
+            menu.add_separator()
+            menu.add_command(label="Screenshot intero", command=lambda: app.media_ctl.take_screenshot())
+            menu.add_command(label="Screenshot regione", command=lambda: app.media_ctl.take_screenshot_region())
+            menu.add_command(label="Inserisci immagine...", command=lambda: app.media_ctl.insert_image())
+            menu.add_separator()
             menu.add_command(label="Registra audio...", command=lambda: app.media_ctl.record_audio())
             menu.add_command(label="Importa audio...", command=lambda: app.media_ctl.import_audio())
             menu.add_separator()
@@ -480,6 +497,7 @@ class NoteController:
             menu.add_separator()
             menu.add_command(label="Condividi (.mynote)...", command=lambda: app.export_ctl.export_mynote())
             menu.add_command(label="Esporta HTML...", command=lambda: app.export_ctl.export_html())
+            menu.add_command(label="Esporta PDF...", command=lambda: app.export_ctl.export_pdf())
             menu.add_separator()
             menu.add_command(label="Sposta nel cestino", command=self.delete_note)
 
@@ -515,6 +533,25 @@ class NoteController:
             menu.add_command(label=f"Elimina definitivamente {n} note",
                              command=lambda: self._permanent_delete_multiple(sel))
         else:
+            menu.add_command(label=f"Fissa {n} note",
+                             command=lambda: self._pin_multiple(sel, True))
+            menu.add_command(label=f"Sgancia {n} note",
+                             command=lambda: self._pin_multiple(sel, False))
+            menu.add_separator()
+            menu.add_command(label=f"Aggiungi {n} note ai preferiti",
+                             command=lambda: self._favorite_multiple(sel, True))
+            menu.add_command(label=f"Rimuovi {n} note dai preferiti",
+                             command=lambda: self._favorite_multiple(sel, False))
+            menu.add_separator()
+            # Submenu "Sposta in" con categorie
+            move_menu = tk.Menu(menu, tearoff=0)
+            move_menu.add_command(label="Nessuna categoria",
+                                  command=lambda: self._move_multiple_to_category(sel, db._UNSET))
+            for cat in app.categories:
+                move_menu.add_command(label=cat["name"],
+                                      command=lambda cid=cat["id"]: self._move_multiple_to_category(sel, cid))
+            menu.add_cascade(label="Sposta in", menu=move_menu)
+            menu.add_separator()
             menu.add_command(label=f"Sposta {n} note nel cestino",
                              command=lambda: self._soft_delete_multiple(sel))
 
@@ -553,6 +590,27 @@ class NoteController:
         self.load_categories()
         self.load_notes()
 
+    def _pin_multiple(self, sel, value):
+        app = self.app
+        ids = [app.notes[i]["id"] for i in sel]
+        db.set_pinned_notes(ids, value)
+        self.load_notes()
+
+    def _favorite_multiple(self, sel, value):
+        app = self.app
+        ids = [app.notes[i]["id"] for i in sel]
+        db.set_favorite_notes(ids, value)
+        self.load_notes()
+
+    def _move_multiple_to_category(self, sel, cat_id):
+        app = self.app
+        self.save_current()
+        ids = [app.notes[i]["id"] for i in sel]
+        db.move_notes_to_category(ids, cat_id)
+        app.current_note_id = None
+        self.load_categories()
+        self.load_notes()
+
     def empty_category(self):
         app = self.app
         if app.current_category_id is None:
@@ -573,6 +631,17 @@ class NoteController:
         self.save_current()
         db.soft_delete_notes(note_ids)
         app.current_note_id = None
+        self.load_categories()
+        self.load_notes()
+
+    def _move_category_notes_to(self, from_cat_id, to_cat_id):
+        note_ids = db.get_note_ids_by_category(from_cat_id)
+        if not note_ids:
+            messagebox.showinfo("Info", "La categoria e' vuota.")
+            return
+        self.save_current()
+        db.move_notes_to_category(note_ids, to_cat_id)
+        self.app.current_note_id = None
         self.load_categories()
         self.load_notes()
 

@@ -340,6 +340,43 @@ def restore_notes(note_ids):
         conn.commit()
 
 
+def set_pinned_notes(note_ids, value):
+    if not note_ids:
+        return
+    with _connect() as conn:
+        placeholders = ",".join("?" * len(note_ids))
+        conn.execute(
+            f"UPDATE notes SET is_pinned = ? WHERE id IN ({placeholders})",
+            [1 if value else 0] + list(note_ids),
+        )
+        conn.commit()
+
+
+def set_favorite_notes(note_ids, value):
+    if not note_ids:
+        return
+    with _connect() as conn:
+        placeholders = ",".join("?" * len(note_ids))
+        conn.execute(
+            f"UPDATE notes SET is_favorite = ? WHERE id IN ({placeholders})",
+            [1 if value else 0] + list(note_ids),
+        )
+        conn.commit()
+
+
+def move_notes_to_category(note_ids, category_id):
+    if not note_ids:
+        return
+    effective = None if category_id is _UNSET else category_id
+    with _connect() as conn:
+        placeholders = ",".join("?" * len(note_ids))
+        conn.execute(
+            f"UPDATE notes SET category_id = ? WHERE id IN ({placeholders})",
+            [effective] + list(note_ids),
+        )
+        conn.commit()
+
+
 def get_note_ids_by_category(cat_id):
     with _connect() as conn:
         rows = conn.execute(

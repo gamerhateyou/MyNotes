@@ -50,6 +50,7 @@ class MediaController:
             tk.Label(frame, text=att["original_name"][:15], bg="#f5f5f5", font=(UI_FONT, 7), fg="#666").pack()
             lbl.bind("<Button-1>", lambda e, idx=i, l=lbl: self._select_image(idx, l))
             lbl.bind("<Double-Button-1>", lambda e, idx=i: self._open_image(idx))
+            lbl.bind("<Button-3>", lambda e, idx=i, l=lbl: self._show_gallery_context_menu(e, idx, l))
             app.gallery_labels.append(lbl)
             items.append((i, att, path, lbl))
 
@@ -77,6 +78,15 @@ class MediaController:
             lbl.config(relief=tk.FLAT)
         label.config(relief=tk.SOLID)
         self.app.selected_image_index = index
+
+    def _show_gallery_context_menu(self, event, index, label):
+        self._select_image(index, label)
+        menu = tk.Menu(self.app.root, tearoff=0)
+        menu.add_command(label="Apri", command=lambda: self._open_image(index))
+        menu.add_command(label="Annota", command=self.annotate_selected)
+        menu.add_separator()
+        menu.add_command(label="Rimuovi", command=self.remove_selected)
+        menu.tk_popup(event.x_root, event.y_root)
 
     def _open_image(self, index):
         att = self.app.gallery_attachments[index]
