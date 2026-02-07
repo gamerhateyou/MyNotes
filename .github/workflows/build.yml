@@ -41,7 +41,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk libportaudio2
+          sudo apt-get install -y libegl1 libportaudio2
 
       - name: Build executable
         env:

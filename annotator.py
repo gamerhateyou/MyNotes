@@ -1,168 +1,202 @@
-"""Tool di annotazione immagini con Canvas Tkinter."""
+"""Tool di annotazione immagini con QGraphicsView (PySide6)."""
 
-import tkinter as tk
-from tkinter import ttk, colorchooser, simpledialog, messagebox
-from PIL import Image, ImageDraw, ImageFont
 import os
 import math
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGraphicsView,
+                                QGraphicsScene, QPushButton, QLabel, QSpinBox,
+                                QButtonGroup, QRadioButton, QMessageBox,
+                                QColorDialog, QInputDialog, QFrame)
+from PySide6.QtCore import Qt, QPointF, QRectF, QLineF
+from PySide6.QtGui import (QPen, QColor, QPixmap, QPainter, QPolygonF, QFont,
+                            QPainterPath, QBrush, QImage)
+from PIL import Image
 import image_utils
 import platform_utils
-from gui.constants import BG_DARK, BG_SURFACE
+from gui.constants import BG_DARK, BG_SURFACE, BG_ELEVATED, FG_PRIMARY, FG_SECONDARY, BORDER
 
 
-class AnnotationTool(tk.Toplevel):
+class AnnotationTool(QDialog):
     """Finestra per annotare un'immagine con frecce, forme, testo e disegno libero."""
 
     TOOLS = ["Freccia", "Rettangolo", "Cerchio", "Linea", "Testo", "Disegno libero"]
 
     def __init__(self, parent, image_path):
         super().__init__(parent)
-        self.title("Annota Immagine")
+        self.setWindowTitle("Annota Immagine")
+        self.setModal(True)
         self.image_path = image_path
         self.result_path = None
 
         self.pil_image = Image.open(image_path).convert("RGB")
         self.original_size = self.pil_image.size
 
-        screen_w = self.winfo_screenwidth() - 100
-        screen_h = self.winfo_screenheight() - 200
+        screen = self.screen().availableGeometry()
+        screen_w = screen.width() - 100
+        screen_h = screen.height() - 200
         self.display_image = image_utils.resize_contain(self.pil_image, screen_w, screen_h)
         self.display_size = self.display_image.size
         self.scale_x = self.original_size[0] / self.display_size[0]
         self.scale_y = self.original_size[1] / self.display_size[1]
 
-        self.geometry(f"{self.display_size[0] + 20}x{self.display_size[1] + 80}")
-        self.configure(bg=BG_SURFACE)
-        self.grab_set()
+        self.resize(self.display_size[0] + 20, self.display_size[1] + 100)
 
         self.current_tool = "Freccia"
-        self.draw_color = "#ff0000"
+        self.draw_color = QColor("#ff0000")
         self.line_width = 3
         self.annotations = []
         self.drawing = False
-        self.start_x = 0
-        self.start_y = 0
+        self.start_pos = QPointF()
         self.temp_item = None
         self.freehand_points = []
 
-        self._build_toolbar()
-        self._build_canvas()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
 
-        self.bind("<Escape>", lambda e: self.destroy())
-        self.transient(parent)
-        self.protocol("WM_DELETE_WINDOW", self.destroy)
-        self.wait_window()
+        self._build_toolbar(layout)
+        self._build_view(layout)
 
-    def _build_toolbar(self):
-        toolbar = ttk.Frame(self, padding=5)
-        toolbar.pack(fill=tk.X)
+        self.exec()
 
-        self.tool_var = tk.StringVar(value=self.current_tool)
-        for tool in self.TOOLS:
-            ttk.Radiobutton(toolbar, text=tool, variable=self.tool_var, value=tool,
-                            command=self._on_tool_change).pack(side=tk.LEFT, padx=3)
+    def _build_toolbar(self, parent_layout):
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(4)
 
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
+        self._tool_group = QButtonGroup(self)
+        for i, tool in enumerate(self.TOOLS):
+            rb = QRadioButton(tool)
+            if i == 0:
+                rb.setChecked(True)
+            self._tool_group.addButton(rb, i)
+            toolbar.addWidget(rb)
+        self._tool_group.idClicked.connect(self._on_tool_change)
 
-        self.color_btn = tk.Button(toolbar, text="  ", bg=self.draw_color, width=3,
-                                   command=self._pick_color, relief=tk.RAISED)
-        self.color_btn.pack(side=tk.LEFT, padx=3)
-        ttk.Label(toolbar, text="Spessore:").pack(side=tk.LEFT, padx=(8, 2))
-        self.width_var = tk.IntVar(value=3)
-        ttk.Spinbox(toolbar, from_=1, to=15, textvariable=self.width_var, width=4).pack(side=tk.LEFT)
+        sep1 = QFrame()
+        sep1.setFrameShape(QFrame.VLine)
+        toolbar.addWidget(sep1)
 
-        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8)
+        self.color_btn = QPushButton()
+        self.color_btn.setFixedSize(28, 28)
+        self.color_btn.setStyleSheet(f"background-color: {self.draw_color.name()}; border: 1px solid {BORDER};")
+        self.color_btn.clicked.connect(self._pick_color)
+        toolbar.addWidget(self.color_btn)
 
-        ttk.Button(toolbar, text="Annulla ultimo", command=self._undo).pack(side=tk.LEFT, padx=3)
-        ttk.Button(toolbar, text="Salva", command=self._save).pack(side=tk.RIGHT, padx=3)
-        ttk.Button(toolbar, text="Annulla", command=self.destroy).pack(side=tk.RIGHT, padx=3)
+        toolbar.addWidget(QLabel("Spessore:"))
+        self.width_spin = QSpinBox()
+        self.width_spin.setRange(1, 15)
+        self.width_spin.setValue(3)
+        toolbar.addWidget(self.width_spin)
 
-    def _build_canvas(self):
-        frame = ttk.Frame(self)
-        frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.VLine)
+        toolbar.addWidget(sep2)
 
-        self.canvas = tk.Canvas(frame, width=self.display_size[0], height=self.display_size[1],
-                                cursor="crosshair", bg=BG_DARK)
-        self.canvas.pack(fill=tk.BOTH, expand=True)
+        undo_btn = QPushButton("Annulla ultimo")
+        undo_btn.clicked.connect(self._undo)
+        toolbar.addWidget(undo_btn)
 
-        self.photo = image_utils.pil_to_photo(self.display_image)
-        self.canvas_image = self.canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
+        toolbar.addStretch()
 
-        self.canvas.bind("<ButtonPress-1>", self._on_press)
-        self.canvas.bind("<B1-Motion>", self._on_drag)
-        self.canvas.bind("<ButtonRelease-1>", self._on_release)
+        cancel_btn = QPushButton("Annulla")
+        cancel_btn.clicked.connect(self.reject)
+        toolbar.addWidget(cancel_btn)
 
-    def _on_tool_change(self):
-        self.current_tool = self.tool_var.get()
+        save_btn = QPushButton("Salva")
+        save_btn.clicked.connect(self._save)
+        toolbar.addWidget(save_btn)
+
+        parent_layout.addLayout(toolbar)
+
+    def _build_view(self, parent_layout):
+        self.scene = QGraphicsScene(self)
+        self.view = _AnnotationView(self.scene, self)
+        self.view.setRenderHint(QPainter.Antialiasing)
+        self.view.setStyleSheet(f"background-color: {BG_DARK};")
+
+        pixmap = image_utils.pil_to_pixmap(self.display_image)
+        self._bg_item = self.scene.addPixmap(pixmap)
+        self.scene.setSceneRect(QRectF(pixmap.rect()))
+
+        parent_layout.addWidget(self.view)
+
+    def _on_tool_change(self, tool_id):
+        self.current_tool = self.TOOLS[tool_id]
 
     def _pick_color(self):
-        color = colorchooser.askcolor(self.draw_color, parent=self, title="Colore annotazione")
-        if color[1]:
-            self.draw_color = color[1]
-            self.color_btn.config(bg=self.draw_color)
+        color = QColorDialog.getColor(self.draw_color, self, "Colore annotazione")
+        if color.isValid():
+            self.draw_color = color
+            self.color_btn.setStyleSheet(f"background-color: {color.name()}; border: 1px solid {BORDER};")
 
-    def _on_press(self, event):
+    def _make_pen(self, color=None, width=None):
+        pen = QPen(color or self.draw_color)
+        pen.setWidth(width or self.width_spin.value())
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        return pen
+
+    # --- Mouse event handlers (called from _AnnotationView) ---
+
+    def on_press(self, pos):
         self.drawing = True
-        self.start_x = event.x
-        self.start_y = event.y
-        self.freehand_points = [(event.x, event.y)]
+        self.start_pos = pos
+        self.freehand_points = [pos]
 
         if self.current_tool == "Testo":
-            text = simpledialog.askstring("Testo", "Inserisci testo:", parent=self)
-            if text:
-                item = self.canvas.create_text(
-                    event.x, event.y, text=text, fill=self.draw_color,
-                    font=(platform_utils.get_ui_font(), max(12, self.width_var.get() * 4)), anchor=tk.NW
-                )
+            text, ok = QInputDialog.getText(self, "Testo", "Inserisci testo:")
+            if ok and text:
+                font_size = max(12, self.width_spin.value() * 4)
+                font = QFont(platform_utils.get_ui_font(), font_size)
+                item = self.scene.addText(text, font)
+                item.setPos(pos)
+                item.setDefaultTextColor(self.draw_color)
                 self.annotations.append(("text", {
-                    "x": event.x, "y": event.y, "text": text,
-                    "color": self.draw_color, "size": max(12, self.width_var.get() * 4),
-                    "item": item
+                    "x": pos.x(), "y": pos.y(), "text": text,
+                    "color": self.draw_color.name(), "size": font_size,
+                    "items": [item]
                 }))
             self.drawing = False
 
-    def _on_drag(self, event):
+    def on_drag(self, pos):
         if not self.drawing:
             return
 
+        pen = self._make_pen()
+
         if self.current_tool == "Disegno libero":
-            px, py = self.freehand_points[-1]
-            item = self.canvas.create_line(
-                px, py, event.x, event.y,
-                fill=self.draw_color, width=self.width_var.get(),
-                capstyle=tk.ROUND, joinstyle=tk.ROUND
-            )
-            self.freehand_points.append((event.x, event.y))
+            prev = self.freehand_points[-1]
+            item = self.scene.addLine(QLineF(prev, pos), pen)
+            self.freehand_points.append(pos)
             if not self.annotations or self.annotations[-1][0] != "_freehand_active":
-                self.annotations.append(("_freehand_active", {"items": [item], "points": list(self.freehand_points),
-                                                               "color": self.draw_color, "width": self.width_var.get()}))
+                self.annotations.append(("_freehand_active", {
+                    "items": [item], "points": list(self.freehand_points),
+                    "color": self.draw_color.name(), "width": self.width_spin.value()
+                }))
             else:
                 self.annotations[-1][1]["items"].append(item)
-                self.annotations[-1][1]["points"].append((event.x, event.y))
+                self.annotations[-1][1]["points"].append(pos)
         else:
             if self.temp_item:
-                self.canvas.delete(self.temp_item)
+                self.scene.removeItem(self.temp_item)
+                self.temp_item = None
 
-            w = self.width_var.get()
+            x1, y1 = self.start_pos.x(), self.start_pos.y()
+            x2, y2 = pos.x(), pos.y()
+
             if self.current_tool == "Rettangolo":
-                self.temp_item = self.canvas.create_rectangle(
-                    self.start_x, self.start_y, event.x, event.y,
-                    outline=self.draw_color, width=w
-                )
+                self.temp_item = self.scene.addRect(
+                    QRectF(QPointF(min(x1, x2), min(y1, y2)),
+                           QPointF(max(x1, x2), max(y1, y2))),
+                    pen)
             elif self.current_tool == "Cerchio":
-                self.temp_item = self.canvas.create_oval(
-                    self.start_x, self.start_y, event.x, event.y,
-                    outline=self.draw_color, width=w
-                )
+                self.temp_item = self.scene.addEllipse(
+                    QRectF(QPointF(min(x1, x2), min(y1, y2)),
+                           QPointF(max(x1, x2), max(y1, y2))),
+                    pen)
             elif self.current_tool in ("Freccia", "Linea"):
-                self.temp_item = self.canvas.create_line(
-                    self.start_x, self.start_y, event.x, event.y,
-                    fill=self.draw_color, width=w,
-                    arrow=tk.LAST if self.current_tool == "Freccia" else None,
-                    arrowshape=(12, 15, 5)
-                )
+                self.temp_item = self.scene.addLine(QLineF(self.start_pos, pos), pen)
 
-    def _on_release(self, event):
+    def on_release(self, pos):
         if not self.drawing:
             return
         self.drawing = False
@@ -174,38 +208,69 @@ class AnnotationTool(tk.Toplevel):
             return
 
         if self.temp_item:
-            self.canvas.delete(self.temp_item)
+            self.scene.removeItem(self.temp_item)
             self.temp_item = None
 
-        w = self.width_var.get()
-        coords = (self.start_x, self.start_y, event.x, event.y)
+        pen = self._make_pen()
+        x1, y1 = self.start_pos.x(), self.start_pos.y()
+        x2, y2 = pos.x(), pos.y()
+        coords = (x1, y1, x2, y2)
 
         if self.current_tool == "Rettangolo":
-            item = self.canvas.create_rectangle(*coords, outline=self.draw_color, width=w)
-            self.annotations.append(("rect", {"coords": coords, "color": self.draw_color, "width": w, "item": item}))
+            item = self.scene.addRect(
+                QRectF(QPointF(min(x1, x2), min(y1, y2)),
+                       QPointF(max(x1, x2), max(y1, y2))),
+                pen)
+            self.annotations.append(("rect", {"coords": coords, "color": self.draw_color.name(),
+                                               "width": self.width_spin.value(), "items": [item]}))
         elif self.current_tool == "Cerchio":
-            item = self.canvas.create_oval(*coords, outline=self.draw_color, width=w)
-            self.annotations.append(("oval", {"coords": coords, "color": self.draw_color, "width": w, "item": item}))
+            item = self.scene.addEllipse(
+                QRectF(QPointF(min(x1, x2), min(y1, y2)),
+                       QPointF(max(x1, x2), max(y1, y2))),
+                pen)
+            self.annotations.append(("oval", {"coords": coords, "color": self.draw_color.name(),
+                                               "width": self.width_spin.value(), "items": [item]}))
         elif self.current_tool == "Freccia":
-            item = self.canvas.create_line(*coords, fill=self.draw_color, width=w,
-                                           arrow=tk.LAST, arrowshape=(12, 15, 5))
-            self.annotations.append(("arrow", {"coords": coords, "color": self.draw_color, "width": w, "item": item}))
+            items = self._draw_arrow(self.start_pos, pos, pen)
+            self.annotations.append(("arrow", {"coords": coords, "color": self.draw_color.name(),
+                                                "width": self.width_spin.value(), "items": items}))
         elif self.current_tool == "Linea":
-            item = self.canvas.create_line(*coords, fill=self.draw_color, width=w)
-            self.annotations.append(("line", {"coords": coords, "color": self.draw_color, "width": w, "item": item}))
+            item = self.scene.addLine(QLineF(self.start_pos, pos), pen)
+            self.annotations.append(("line", {"coords": coords, "color": self.draw_color.name(),
+                                               "width": self.width_spin.value(), "items": [item]}))
+
+    def _draw_arrow(self, start, end, pen):
+        """Draw a line with an arrowhead. Returns list of scene items."""
+        items = []
+        line = self.scene.addLine(QLineF(start, end), pen)
+        items.append(line)
+
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        angle = math.atan2(dy, dx)
+        arrow_len = 15
+
+        p1 = QPointF(end.x() + arrow_len * math.cos(angle + 2.6),
+                      end.y() + arrow_len * math.sin(angle + 2.6))
+        p2 = QPointF(end.x() + arrow_len * math.cos(angle - 2.6),
+                      end.y() + arrow_len * math.sin(angle - 2.6))
+
+        polygon = QPolygonF([end, p1, p2])
+        brush = QBrush(pen.color())
+        head = self.scene.addPolygon(polygon, pen, brush)
+        items.append(head)
+        return items
 
     def _undo(self):
         if not self.annotations:
             return
         ann_type, params = self.annotations.pop()
-        if ann_type == "freehand":
-            for item in params["items"]:
-                self.canvas.delete(item)
-        elif "item" in params:
-            self.canvas.delete(params["item"])
+        for item in params.get("items", []):
+            self.scene.removeItem(item)
 
     def _get_font(self, size):
         """Carica un font TrueType cross-platform."""
+        from PIL import ImageFont
         font_path = platform_utils.get_font_path()
         if font_path:
             try:
@@ -216,6 +281,7 @@ class AnnotationTool(tk.Toplevel):
 
     def _save(self):
         """Render annotations onto the PIL image and save."""
+        from PIL import ImageDraw
         draw = ImageDraw.Draw(self.pil_image)
         sx, sy = self.scale_x, self.scale_y
 
@@ -249,7 +315,7 @@ class AnnotationTool(tk.Toplevel):
                     draw.line([x2, y2, ax, ay], fill=color, width=width)
 
             elif ann_type == "freehand":
-                points = [(p[0]*sx, p[1]*sy) for p in params["points"]]
+                points = [(p.x()*sx, p.y()*sy) for p in params["points"]]
                 if len(points) > 1:
                     draw.line(points, fill=color, width=width, joint="curve")
 
@@ -262,5 +328,37 @@ class AnnotationTool(tk.Toplevel):
         base, ext = os.path.splitext(self.image_path)
         self.result_path = f"{base}_annotated{ext}"
         self.pil_image.save(self.result_path)
-        messagebox.showinfo("Salvato", "Immagine annotata salvata.", parent=self)
-        self.destroy()
+        QMessageBox.information(self, "Salvato", "Immagine annotata salvata.")
+        self.accept()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.reject()
+        else:
+            super().keyPressEvent(event)
+
+
+class _AnnotationView(QGraphicsView):
+    """QGraphicsView that forwards mouse events to the AnnotationTool."""
+
+    def __init__(self, scene, tool):
+        super().__init__(scene)
+        self._tool = tool
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setCursor(Qt.CrossCursor)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._tool.on_press(self.mapToScene(event.pos()))
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.LeftButton:
+            self._tool.on_drag(self.mapToScene(event.pos()))
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._tool.on_release(self.mapToScene(event.pos()))
+        super().mouseReleaseEvent(event)

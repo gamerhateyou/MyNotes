@@ -1,15 +1,18 @@
-"""Screenshots, image gallery, annotations, audio."""
+"""Screenshots, image gallery, annotations, audio (PySide6)."""
 
 import os
 import threading
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from PySide6.QtWidgets import (QLabel, QMessageBox, QFileDialog, QMenu,
+                                QWidget, QVBoxLayout, QFrame)
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QPixmap, QFont, QColor
 from datetime import datetime
 import database as db
 import image_utils
 import platform_utils
 import audio_utils
-from gui.constants import UI_FONT
+from gui.constants import (UI_FONT, FONT_XS, BG_ELEVATED, BG_SURFACE,
+                           FG_SECONDARY, BORDER)
 from annotator import AnnotationTool
 from dialogs import AudioRecordDialog
 
@@ -17,76 +20,107 @@ from dialogs import AudioRecordDialog
 class MediaController:
     def __init__(self, app):
         self.app = app
+        self._gallery_load_id = None
 
     # --- Gallery ---
 
     def load_gallery(self, note_id):
         app = self.app
         app._image_refs.clear()
-        for w in app.gallery_inner.winfo_children():
-            w.destroy()
         app.gallery_labels.clear()
         app.selected_image_index = None
         self._gallery_load_id = note_id
+
+        # Clear gallery layout
+        layout = app.gallery_inner_layout
+        while layout.count() > 0:
+            child = layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
 
         attachments = db.get_note_attachments(note_id)
         app.gallery_attachments = [a for a in attachments if image_utils.is_image_file(a["original_name"])]
 
         if not app.gallery_attachments:
-            ttk.Label(app.gallery_inner, text="Nessuna immagine", style="ImgPanel.TLabel").pack(side=tk.LEFT, padx=20, pady=20)
+            no_img_label = QLabel("Nessuna immagine")
+            no_img_label.setStyleSheet(f"color: {FG_SECONDARY}; padding: 20px;")
+            layout.addWidget(no_img_label)
+            layout.addStretch()
             return
 
-        # Prepara placeholder e carica thumbnail in background
         items = []
         for i, att in enumerate(app.gallery_attachments):
             path = os.path.join(db.ATTACHMENTS_DIR, att["filename"])
             if not os.path.exists(path):
                 items.append((i, att, path, None))
                 continue
-            frame = tk.Frame(app.gallery_inner, bg="#f5f5f5", padx=4, pady=4)
-            frame.pack(side=tk.LEFT, padx=3, pady=3)
-            lbl = tk.Label(frame, text="...", width=12, height=5, bg="#e0e0e0", cursor="hand2", borderwidth=2, relief=tk.FLAT)
-            lbl.pack()
-            tk.Label(frame, text=att["original_name"][:15], bg="#f5f5f5", font=(UI_FONT, 7), fg="#666").pack()
-            lbl.bind("<Button-1>", lambda e, idx=i, l=lbl: self._select_image(idx, l))
-            lbl.bind("<Double-Button-1>", lambda e, idx=i: self._open_image(idx))
-            lbl.bind("<Button-3>", lambda e, idx=i, l=lbl: self._show_gallery_context_menu(e, idx, l))
+
+            frame = QFrame()
+            frame.setStyleSheet(f"background-color: {BG_ELEVATED}; padding: 4px;")
+            frame_layout = QVBoxLayout(frame)
+            frame_layout.setContentsMargins(4, 4, 4, 4)
+            frame_layout.setSpacing(2)
+
+            lbl = QLabel("...")
+            lbl.setFixedSize(100, 80)
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet(f"background-color: {BG_SURFACE}; border: 2px solid transparent;")
+            lbl.setCursor(Qt.PointingHandCursor)
+            lbl.setProperty("gallery_index", i)
+            lbl.mousePressEvent = lambda e, idx=i, l=lbl: self._on_gallery_click(e, idx, l)
+            lbl.mouseDoubleClickEvent = lambda e, idx=i: self._open_image(idx)
+            frame_layout.addWidget(lbl)
+
+            name_label = QLabel(att["original_name"][:15])
+            name_label.setStyleSheet(f"color: {FG_SECONDARY}; font-size: {FONT_XS}pt;")
+            name_label.setAlignment(Qt.AlignCenter)
+            frame_layout.addWidget(name_label)
+
+            layout.addWidget(frame)
             app.gallery_labels.append(lbl)
             items.append((i, att, path, lbl))
+
+        layout.addStretch()
 
         def _load_thumbs():
             for i, att, path, lbl in items:
                 if self._gallery_load_id != note_id:
-                    return  # Nota cambiata, annulla
+                    return
                 if lbl is None:
                     continue
                 try:
-                    photo = image_utils.load_image_as_photo(path, max_width=100, max_height=100)
-                    app.root.after(0, lambda p=photo, l=lbl: self._set_thumb(p, l))
+                    pixmap = image_utils.load_image_as_pixmap(path, max_width=100, max_height=80)
+                    QTimer.singleShot(0, lambda p=pixmap, l=lbl: self._set_thumb(p, l))
                 except Exception:
                     continue
 
         threading.Thread(target=_load_thumbs, daemon=True).start()
 
-    def _set_thumb(self, photo, label):
-        """Aggiorna thumbnail nella gallery dal thread principale."""
-        self.app._image_refs.append(photo)
-        label.config(image=photo, text="", width=0, height=0)
+    def _set_thumb(self, pixmap, label):
+        self.app._image_refs.append(pixmap)
+        label.setPixmap(pixmap)
+        label.setFixedSize(pixmap.width() + 4, pixmap.height() + 4)
+
+    def _on_gallery_click(self, event, index, label):
+        if event.button() == Qt.RightButton:
+            self._select_image(index, label)
+            self._show_gallery_context_menu(event, index, label)
+        elif event.button() == Qt.LeftButton:
+            self._select_image(index, label)
 
     def _select_image(self, index, label):
         for lbl in self.app.gallery_labels:
-            lbl.config(relief=tk.FLAT)
-        label.config(relief=tk.SOLID)
+            lbl.setStyleSheet(f"background-color: {BG_SURFACE}; border: 2px solid transparent;")
+        label.setStyleSheet(f"background-color: {BG_SURFACE}; border: 2px solid {BORDER};")
         self.app.selected_image_index = index
 
     def _show_gallery_context_menu(self, event, index, label):
-        self._select_image(index, label)
-        menu = tk.Menu(self.app.root, tearoff=0)
-        menu.add_command(label="Apri", command=lambda: self._open_image(index))
-        menu.add_command(label="Annota", command=self.annotate_selected)
-        menu.add_separator()
-        menu.add_command(label="Rimuovi", command=self.remove_selected)
-        menu.tk_popup(event.x_root, event.y_root)
+        menu = QMenu(self.app)
+        menu.addAction("Apri", lambda: self._open_image(index))
+        menu.addAction("Annota", self.annotate_selected)
+        menu.addSeparator()
+        menu.addAction("Rimuovi", self.remove_selected)
+        menu.popup(label.mapToGlobal(event.pos()))
 
     def _open_image(self, index):
         att = self.app.gallery_attachments[index]
@@ -101,7 +135,10 @@ class MediaController:
         if app.selected_image_index is None:
             return
         att = app.gallery_attachments[app.selected_image_index]
-        if messagebox.askyesno("Conferma", f"Rimuovere '{att['original_name']}'?"):
+        if QMessageBox.question(
+            app, "Conferma",
+            f"Rimuovere '{att['original_name']}'?"
+        ) == QMessageBox.Yes:
             db.delete_attachment(att["id"])
             if app.current_note_id:
                 self.load_gallery(app.current_note_id)
@@ -110,13 +147,13 @@ class MediaController:
     def annotate_selected(self):
         app = self.app
         if app.selected_image_index is None:
-            messagebox.showinfo("Info", "Seleziona un'immagine dalla galleria.")
+            QMessageBox.information(app, "Info", "Seleziona un'immagine dalla galleria.")
             return
         att = app.gallery_attachments[app.selected_image_index]
         path = os.path.join(db.ATTACHMENTS_DIR, att["filename"])
         if not os.path.exists(path):
             return
-        tool = AnnotationTool(app.root, path)
+        tool = AnnotationTool(app, path)
         if tool.result_path and os.path.exists(tool.result_path):
             db.add_attachment(app.current_note_id, tool.result_path)
             os.remove(tool.result_path)
@@ -127,17 +164,17 @@ class MediaController:
 
     def take_screenshot(self):
         if self.app.current_note_id is None:
-            messagebox.showinfo("Info", "Crea o seleziona una nota prima.")
+            QMessageBox.information(self.app, "Info", "Crea o seleziona una nota prima.")
             return
-        self.app.root.withdraw()
-        self.app.root.after(500, lambda: self._do_screenshot(full=True))
+        self.app.hide()
+        QTimer.singleShot(500, lambda: self._do_screenshot(full=True))
 
     def take_screenshot_region(self):
         if self.app.current_note_id is None:
-            messagebox.showinfo("Info", "Crea o seleziona una nota prima.")
+            QMessageBox.information(self.app, "Info", "Crea o seleziona una nota prima.")
             return
-        self.app.root.withdraw()
-        self.app.root.after(500, lambda: self._do_screenshot(full=False))
+        self.app.hide()
+        QTimer.singleShot(500, lambda: self._do_screenshot(full=False))
 
     def _do_screenshot(self, full=True):
         import uuid
@@ -145,46 +182,48 @@ class MediaController:
         filename = f"screenshot_{uuid.uuid4().hex[:8]}.png"
         save_path = os.path.join(db.ATTACHMENTS_DIR, filename)
         try:
-            success = platform_utils.take_screenshot(save_path) if full else platform_utils.take_screenshot_region(save_path)
+            success = (platform_utils.take_screenshot(save_path) if full
+                       else platform_utils.take_screenshot_region(save_path))
         except Exception:
             success = False
-        app.root.deiconify()
+        app.show()
         if success and os.path.exists(save_path):
             now = datetime.now().isoformat()
             with db._connect() as conn:
                 conn.execute(
-                    "INSERT INTO attachments (note_id, filename, original_name, added_at) VALUES (?, ?, ?, ?)",
+                    "INSERT INTO attachments (note_id, filename, original_name, added_at) "
+                    "VALUES (?, ?, ?, ?)",
                     (app.current_note_id, filename, filename, now))
                 conn.commit()
             app.notes_ctl.display_note(app.current_note_id)
-            app.status_var.set("Screenshot catturato!")
+            app.statusBar().showMessage("Screenshot catturato!")
         else:
             msg = "Impossibile catturare lo screenshot.\n"
             if platform_utils.IS_LINUX:
                 msg += "Installa: sudo dnf install grim slurp"
-            messagebox.showwarning("Screenshot", msg, parent=app.root)
+            QMessageBox.warning(app, "Screenshot", msg)
 
     def insert_image(self):
         app = self.app
         if app.current_note_id is None:
             return
-        path = filedialog.askopenfilename(
-            parent=app.root, title="Seleziona immagine",
-            filetypes=[("Immagini", "*.png *.jpg *.jpeg *.gif *.bmp *.tiff *.webp"), ("Tutti", "*.*")])
+        path, _ = QFileDialog.getOpenFileName(
+            app, "Seleziona immagine",
+            "", "Immagini (*.png *.jpg *.jpeg *.gif *.bmp *.tiff *.webp);;Tutti (*.*)")
         if path:
             db.add_attachment(app.current_note_id, path)
             app.notes_ctl.display_note(app.current_note_id)
-            app.status_var.set(f"Immagine aggiunta")
+            app.statusBar().showMessage("Immagine aggiunta")
 
     # --- Audio ---
 
     def record_audio(self):
         app = self.app
         if app.current_note_id is None:
-            messagebox.showinfo("Info", "Crea o seleziona una nota prima.")
+            QMessageBox.information(app, "Info", "Crea o seleziona una nota prima.")
             return
 
-        dlg = AudioRecordDialog(app.root, mode="record")
+        dlg = AudioRecordDialog(app, mode="record")
         if dlg.result is None:
             return
 
@@ -192,7 +231,6 @@ class MediaController:
         description = dlg.result["description"]
 
         att_filename = db.add_attachment(app.current_note_id, temp_path)
-        # Remove temp file
         try:
             os.remove(temp_path)
         except OSError:
@@ -200,21 +238,21 @@ class MediaController:
 
         app.notes_ctl.insert_audio_marker(att_filename, description)
         app.notes_ctl.display_note(app.current_note_id)
-        app.status_var.set("Audio registrato")
+        app.statusBar().showMessage("Audio registrato")
 
     def import_audio(self):
         app = self.app
         if app.current_note_id is None:
-            messagebox.showinfo("Info", "Crea o seleziona una nota prima.")
+            QMessageBox.information(app, "Info", "Crea o seleziona una nota prima.")
             return
 
-        path = filedialog.askopenfilename(
-            parent=app.root, title="Seleziona file audio",
-            filetypes=[("Audio", "*.mp3 *.wav *.ogg *.m4a *.flac *.aac *.wma"), ("Tutti", "*.*")])
+        path, _ = QFileDialog.getOpenFileName(
+            app, "Seleziona file audio",
+            "", "Audio (*.mp3 *.wav *.ogg *.m4a *.flac *.aac *.wma);;Tutti (*.*)")
         if not path:
             return
 
-        dlg = AudioRecordDialog(app.root, mode="describe", audio_path=path)
+        dlg = AudioRecordDialog(app, mode="describe", audio_path=path)
         if dlg.result is None:
             return
 
@@ -223,4 +261,4 @@ class MediaController:
 
         app.notes_ctl.insert_audio_marker(att_filename, description)
         app.notes_ctl.display_note(app.current_note_id)
-        app.status_var.set("Audio importato")
+        app.statusBar().showMessage("Audio importato")

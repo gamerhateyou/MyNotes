@@ -78,11 +78,13 @@ def build():
         "--hidden-import", "gui.constants",
         "--hidden-import", "gui.menu",
         "--hidden-import", "gui.layout",
+        "--hidden-import", "gui.widgets",
         "--hidden-import", "gui.note_controller",
         "--hidden-import", "gui.export_controller",
         "--hidden-import", "gui.media_controller",
         "--hidden-import", "gui.backup_controller",
         "--hidden-import", "gui.update_controller",
+        "--hidden-import", "gui.note_window",
         "--hidden-import", "dialogs",
         "--hidden-import", "image_utils",
         "--hidden-import", "platform_utils",
@@ -93,6 +95,9 @@ def build():
         "--hidden-import", "backup_utils",
         "--hidden-import", "audio_utils",
         "--hidden-import", "error_codes",
+        # PySide6
+        "--collect-all", "PySide6",
+        "--hidden-import", "qdarktheme",
         # PIL
         "--hidden-import", "PIL",
         "--hidden-import", "PIL.Image",

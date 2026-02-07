@@ -1,6 +1,14 @@
+"""All dialog windows (PySide6 QDialog)."""
+
 import os
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from PySide6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QComboBox, QCheckBox, QListWidget, QPlainTextEdit, QMessageBox,
+    QFileDialog, QGroupBox, QSpinBox, QFrame, QWidget
+)
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont
+
 import database as db
 import platform_utils
 import audio_utils
@@ -11,421 +19,471 @@ from gui.constants import (UI_FONT, FONT_SM, FONT_BASE,
                            SELECT_BG, SELECT_FG)
 
 
-class CategoryDialog(tk.Toplevel):
+class CategoryDialog(QDialog):
     def __init__(self, parent, title="Nuova Categoria", initial_name=""):
         super().__init__(parent)
-        self.title(title)
-        self.configure(bg=BG_SURFACE)
+        self.setWindowTitle(title)
         self.result = None
-        self.resizable(False, False)
-        self.grab_set()
+        self.setFixedWidth(350)
+        self.setModal(True)
 
-        frame = ttk.Frame(self, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(frame, text="Nome categoria:").pack(anchor=tk.W)
-        self.entry = ttk.Entry(frame, width=35)
-        self.entry.insert(0, initial_name)
-        self.entry.pack(pady=(5, 15))
-        self.entry.focus_set()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X)
-        ttk.Button(btn_frame, text="Annulla", command=self.destroy).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(btn_frame, text="OK", command=self._on_ok).pack(side=tk.RIGHT)
-        self.bind("<Return>", lambda e: self._on_ok())
-        self.bind("<Escape>", lambda e: self.destroy())
-        self.transient(parent)
-        self.wait_window()
+        layout.addWidget(QLabel("Nome categoria:"))
+        self.entry = QLineEdit()
+        self.entry.setText(initial_name)
+        layout.addWidget(self.entry)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self._on_ok)
+        btn_layout.addWidget(ok_btn)
+        cancel_btn = QPushButton("Annulla")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+
+        self.entry.setFocus()
+        self.exec()
 
     def _on_ok(self):
-        name = self.entry.get().strip()
+        name = self.entry.text().strip()
         if name:
             self.result = name
-            self.destroy()
+            self.accept()
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self._on_ok()
+        elif event.key() == Qt.Key_Escape:
+            self.reject()
+        else:
+            super().keyPressEvent(event)
 
 
-class NoteDialog(tk.Toplevel):
+class NoteDialog(QDialog):
     def __init__(self, parent, categories):
         super().__init__(parent)
-        self.title("Nuova Nota")
-        self.configure(bg=BG_SURFACE)
+        self.setWindowTitle("Nuova Nota")
         self.result = None
-        self.resizable(False, False)
-        self.grab_set()
+        self.setFixedWidth(400)
+        self.setModal(True)
         self.categories = categories
 
-        frame = ttk.Frame(self, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
-        ttk.Label(frame, text="Titolo:").pack(anchor=tk.W)
-        self.title_entry = ttk.Entry(frame, width=40)
-        self.title_entry.pack(pady=(5, 10))
-        self.title_entry.focus_set()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
 
-        ttk.Label(frame, text="Categoria:").pack(anchor=tk.W)
-        self.cat_var = tk.StringVar()
-        cat_names = ["(Nessuna)"] + [c["name"] for c in categories]
-        self.cat_combo = ttk.Combobox(frame, textvariable=self.cat_var, values=cat_names, state="readonly", width=37)
-        self.cat_combo.current(0)
-        self.cat_combo.pack(pady=(5, 15))
+        layout.addWidget(QLabel("Titolo:"))
+        self.title_entry = QLineEdit()
+        layout.addWidget(self.title_entry)
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X)
-        ttk.Button(btn_frame, text="Annulla", command=self.destroy).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(btn_frame, text="Crea", command=self._on_ok).pack(side=tk.RIGHT)
-        self.bind("<Return>", lambda e: self._on_ok())
-        self.bind("<Escape>", lambda e: self.destroy())
-        self.transient(parent)
-        self.wait_window()
+        layout.addWidget(QLabel("Categoria:"))
+        self.cat_combo = QComboBox()
+        self.cat_combo.addItem("(Nessuna)")
+        for c in categories:
+            self.cat_combo.addItem(c["name"])
+        layout.addWidget(self.cat_combo)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        create_btn = QPushButton("Crea")
+        create_btn.clicked.connect(self._on_ok)
+        btn_layout.addWidget(create_btn)
+        cancel_btn = QPushButton("Annulla")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+
+        self.title_entry.setFocus()
+        self.exec()
 
     def _on_ok(self):
-        title = self.title_entry.get().strip()
+        title = self.title_entry.text().strip()
         if not title:
-            messagebox.showwarning("Attenzione", "Inserisci un titolo.", parent=self)
+            QMessageBox.warning(self, "Attenzione", "Inserisci un titolo.")
             return
         cat_id = None
-        idx = self.cat_combo.current()
+        idx = self.cat_combo.currentIndex()
         if idx > 0:
             cat_id = self.categories[idx - 1]["id"]
         self.result = {"title": title, "category_id": cat_id}
-        self.destroy()
+        self.accept()
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self._on_ok()
+        elif event.key() == Qt.Key_Escape:
+            self.reject()
+        else:
+            super().keyPressEvent(event)
 
 
-class TagManagerDialog(tk.Toplevel):
+class TagManagerDialog(QDialog):
     def __init__(self, parent, note_id):
         super().__init__(parent)
-        self.title("Gestione Tag")
-        self.configure(bg=BG_SURFACE)
+        self.setWindowTitle("Gestione Tag")
         self.note_id = note_id
-        self.resizable(False, False)
-        self.grab_set()
+        self.setFixedWidth(350)
+        self.setModal(True)
 
-        frame = ttk.Frame(self, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
-        add_frame = ttk.Frame(frame)
-        add_frame.pack(fill=tk.X, pady=(0, 10))
-        ttk.Label(add_frame, text="Nuovo tag:").pack(side=tk.LEFT)
-        self.new_tag_entry = ttk.Entry(add_frame, width=20)
-        self.new_tag_entry.pack(side=tk.LEFT, padx=5)
-        ttk.Button(add_frame, text="Aggiungi", command=self._add_tag).pack(side=tk.LEFT)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
 
-        ttk.Label(frame, text="Tag disponibili:").pack(anchor=tk.W)
-        self.check_frame = ttk.Frame(frame)
-        self.check_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        add_layout = QHBoxLayout()
+        add_layout.addWidget(QLabel("Nuovo tag:"))
+        self.new_tag_entry = QLineEdit()
+        add_layout.addWidget(self.new_tag_entry)
+        add_btn = QPushButton("Aggiungi")
+        add_btn.clicked.connect(self._add_tag)
+        add_layout.addWidget(add_btn)
+        layout.addLayout(add_layout)
+
+        layout.addWidget(QLabel("Tag disponibili:"))
+        self.check_widget = QWidget()
+        self.check_layout = QVBoxLayout(self.check_widget)
+        self.check_layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.check_widget)
+
         self.tag_vars = {}
         self._load_tags()
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X, pady=(10, 0))
-        ttk.Button(btn_frame, text="Chiudi", command=self._on_close).pack(side=tk.RIGHT)
-        self.bind("<Escape>", lambda e: self._on_close())
-        self.transient(parent)
-        self.wait_window()
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        close_btn = QPushButton("Chiudi")
+        close_btn.clicked.connect(self._on_close)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        self.exec()
 
     def _load_tags(self):
-        for w in self.check_frame.winfo_children():
-            w.destroy()
+        while self.check_layout.count():
+            child = self.check_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
         all_tags = db.get_all_tags()
         note_tags = db.get_note_tags(self.note_id)
         note_tag_ids = {t["id"] for t in note_tags}
         self.tag_vars = {}
         for tag in all_tags:
-            var = tk.BooleanVar(value=tag["id"] in note_tag_ids)
-            self.tag_vars[tag["id"]] = var
-            ttk.Checkbutton(self.check_frame, text=tag["name"], variable=var).pack(anchor=tk.W)
+            cb = QCheckBox(tag["name"])
+            cb.setChecked(tag["id"] in note_tag_ids)
+            self.tag_vars[tag["id"]] = cb
+            self.check_layout.addWidget(cb)
         if not all_tags:
-            ttk.Label(self.check_frame, text="Nessun tag creato.").pack()
+            self.check_layout.addWidget(QLabel("Nessun tag creato."))
 
     def _add_tag(self):
-        name = self.new_tag_entry.get().strip()
+        name = self.new_tag_entry.text().strip()
         if name:
             db.add_tag(name)
-            self.new_tag_entry.delete(0, tk.END)
+            self.new_tag_entry.clear()
             self._load_tags()
 
     def _on_close(self):
-        selected_ids = [tid for tid, var in self.tag_vars.items() if var.get()]
+        selected_ids = [tid for tid, cb in self.tag_vars.items() if cb.isChecked()]
         db.set_note_tags(self.note_id, selected_ids)
-        self.destroy()
+        self.accept()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self._on_close()
+        else:
+            super().keyPressEvent(event)
 
 
-class AttachmentDialog(tk.Toplevel):
+class AttachmentDialog(QDialog):
     def __init__(self, parent, note_id):
         super().__init__(parent)
-        self.title("Allegati")
-        self.configure(bg=BG_SURFACE)
+        self.setWindowTitle("Allegati")
         self.note_id = note_id
-        self.geometry("450x350")
-        self.grab_set()
+        self.resize(450, 350)
+        self.setModal(True)
 
-        frame = ttk.Frame(self, padding=15)
-        frame.pack(fill=tk.BOTH, expand=True)
-        toolbar = ttk.Frame(frame)
-        toolbar.pack(fill=tk.X, pady=(0, 10))
-        ttk.Button(toolbar, text="Aggiungi file...", command=self._add_file).pack(side=tk.LEFT)
-        ttk.Button(toolbar, text="Rimuovi selezionato", command=self._remove_file).pack(side=tk.LEFT, padx=5)
-        ttk.Button(toolbar, text="Apri file", command=self._open_file).pack(side=tk.LEFT)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
 
-        self.listbox = tk.Listbox(frame, selectmode=tk.SINGLE, bg=BG_ELEVATED,
-                                   fg=FG_PRIMARY, selectbackground=SELECT_BG,
-                                   selectforeground=SELECT_FG, font=(UI_FONT, FONT_BASE),
-                                   borderwidth=0, highlightthickness=0)
-        self.listbox.pack(fill=tk.BOTH, expand=True)
+        toolbar = QHBoxLayout()
+        add_btn = QPushButton("Aggiungi file...")
+        add_btn.clicked.connect(self._add_file)
+        toolbar.addWidget(add_btn)
+        remove_btn = QPushButton("Rimuovi selezionato")
+        remove_btn.clicked.connect(self._remove_file)
+        toolbar.addWidget(remove_btn)
+        open_btn = QPushButton("Apri file")
+        open_btn.clicked.connect(self._open_file)
+        toolbar.addWidget(open_btn)
+        toolbar.addStretch()
+        layout.addLayout(toolbar)
+
+        self.listbox = QListWidget()
+        layout.addWidget(self.listbox)
+
         self.attachments = []
         self._load_attachments()
 
-        ttk.Button(frame, text="Chiudi", command=self.destroy).pack(pady=(10, 0), anchor=tk.E)
-        self.bind("<Escape>", lambda e: self.destroy())
-        self.transient(parent)
-        self.wait_window()
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        close_btn = QPushButton("Chiudi")
+        close_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        self.exec()
 
     def _load_attachments(self):
-        self.listbox.delete(0, tk.END)
+        self.listbox.clear()
         self.attachments = db.get_note_attachments(self.note_id)
         for att in self.attachments:
-            self.listbox.insert(tk.END, f"{att['original_name']}  ({att['added_at'][:10]})")
+            self.listbox.addItem(f"{att['original_name']}  ({att['added_at'][:10]})")
 
     def _add_file(self):
-        path = filedialog.askopenfilename(parent=self, title="Seleziona file da allegare")
+        path, _ = QFileDialog.getOpenFileName(self, "Seleziona file da allegare")
         if path:
             db.add_attachment(self.note_id, path)
             self._load_attachments()
 
     def _remove_file(self):
-        sel = self.listbox.curselection()
-        if not sel:
+        row = self.listbox.currentRow()
+        if row < 0:
             return
-        att = self.attachments[sel[0]]
-        if messagebox.askyesno("Conferma", f"Rimuovere '{att['original_name']}'?", parent=self):
+        att = self.attachments[row]
+        if QMessageBox.question(
+            self, "Conferma",
+            f"Rimuovere '{att['original_name']}'?"
+        ) == QMessageBox.Yes:
             db.delete_attachment(att["id"])
             self._load_attachments()
 
     def _open_file(self):
-        sel = self.listbox.curselection()
-        if not sel:
+        row = self.listbox.currentRow()
+        if row < 0:
             return
-        att = self.attachments[sel[0]]
-        import os
+        att = self.attachments[row]
         path = os.path.join(db.ATTACHMENTS_DIR, att["filename"])
         if not platform_utils.open_file(path):
-            messagebox.showerror("Errore", "Impossibile aprire il file.", parent=self)
+            QMessageBox.critical(self, "Errore", "Impossibile aprire il file.")
 
 
-class VersionHistoryDialog(tk.Toplevel):
-    """Dialog to view and restore note version history."""
-
+class VersionHistoryDialog(QDialog):
     def __init__(self, parent, note_id):
         super().__init__(parent)
-        self.title("Cronologia versioni")
-        self.configure(bg=BG_SURFACE)
+        self.setWindowTitle("Cronologia versioni")
         self.note_id = note_id
         self.result = None
-        self.geometry("600x450")
-        self.grab_set()
+        self.resize(600, 450)
+        self.setModal(True)
 
-        frame = ttk.Frame(self, padding=15)
-        frame.pack(fill=tk.BOTH, expand=True)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
 
-        ttk.Label(frame, text="Versioni salvate:", font=(UI_FONT, FONT_BASE, "bold")).pack(anchor=tk.W)
+        layout.addWidget(QLabel("Versioni salvate:"))
 
-        # Version list
-        list_frame = ttk.Frame(frame)
-        list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        self.version_list = QListWidget()
+        self.version_list.currentRowChanged.connect(self._on_select)
+        layout.addWidget(self.version_list)
 
-        self.version_list = tk.Listbox(list_frame, font=(UI_FONT, FONT_BASE),
-                                        bg=BG_ELEVATED, fg=FG_PRIMARY,
-                                        selectbackground=SELECT_BG, selectforeground=SELECT_FG,
-                                        borderwidth=0, highlightthickness=0)
-        scroll = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.version_list.yview)
-        self.version_list.configure(yscrollcommand=scroll.set)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.version_list.pack(fill=tk.BOTH, expand=True)
-        self.version_list.bind("<<ListboxSelect>>", lambda e: self._on_select())
+        layout.addWidget(QLabel("Anteprima:"))
+        self.preview = QPlainTextEdit()
+        self.preview.setReadOnly(True)
+        self.preview.setMaximumHeight(200)
+        layout.addWidget(self.preview)
 
-        # Preview
-        ttk.Label(frame, text="Anteprima:").pack(anchor=tk.W, pady=(5, 0))
-        self.preview = tk.Text(frame, height=8, font=(UI_FONT, FONT_BASE), state=tk.DISABLED,
-                               wrap=tk.WORD, bg=BG_ELEVATED, fg=FG_PRIMARY,
-                               insertbackground=FG_PRIMARY)
-        self.preview.pack(fill=tk.BOTH, expand=True, pady=5)
-
-        # Buttons
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X)
-        ttk.Button(btn_frame, text="Chiudi", command=self.destroy).pack(side=tk.RIGHT)
-        ttk.Button(btn_frame, text="Ripristina questa versione", command=self._restore).pack(side=tk.RIGHT, padx=5)
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        restore_btn = QPushButton("Ripristina questa versione")
+        restore_btn.clicked.connect(self._restore)
+        btn_layout.addWidget(restore_btn)
+        close_btn = QPushButton("Chiudi")
+        close_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
 
         self.versions = db.get_note_versions(note_id)
         for v in self.versions:
             date = v["saved_at"][:19].replace("T", " ")
             title = v["title"][:40]
-            self.version_list.insert(tk.END, f"[{date}]  {title}")
+            self.version_list.addItem(f"[{date}]  {title}")
 
         if not self.versions:
-            self.version_list.insert(tk.END, "Nessuna versione precedente salvata.")
+            self.version_list.addItem("Nessuna versione precedente salvata.")
 
-        self.bind("<Escape>", lambda e: self.destroy())
-        self.transient(parent)
-        self.wait_window()
+        self.exec()
 
-    def _on_select(self):
-        sel = self.version_list.curselection()
-        if not sel or not self.versions:
+    def _on_select(self, row):
+        if row < 0 or not self.versions:
             return
-        ver = self.versions[sel[0]]
-        self.preview.config(state=tk.NORMAL)
-        self.preview.delete("1.0", tk.END)
-        self.preview.insert("1.0", ver["content"] or "")
-        self.preview.config(state=tk.DISABLED)
+        ver = self.versions[row]
+        self.preview.setPlainText(ver["content"] or "")
 
     def _restore(self):
-        sel = self.version_list.curselection()
-        if not sel or not self.versions:
+        row = self.version_list.currentRow()
+        if row < 0 or not self.versions:
             return
-        ver = self.versions[sel[0]]
-        if messagebox.askyesno("Ripristina", "Ripristinare questa versione?\nLa versione attuale verrà salvata.", parent=self):
-            # Save current version first
+        ver = self.versions[row]
+        if QMessageBox.question(
+            self, "Ripristina",
+            "Ripristinare questa versione?\nLa versione attuale verra' salvata."
+        ) == QMessageBox.Yes:
             note = db.get_note(self.note_id)
             if note:
                 db.save_version(self.note_id, note["title"], note["content"])
             db.restore_version(self.note_id, ver["id"])
             self.result = True
-            self.destroy()
+            self.accept()
 
 
-class PasswordDialog(tk.Toplevel):
-    """Dialog to enter encryption password."""
-
+class PasswordDialog(QDialog):
     def __init__(self, parent, title="Password", confirm=False):
         super().__init__(parent)
-        self.title(title)
-        self.configure(bg=BG_SURFACE)
+        self.setWindowTitle(title)
         self.result = None
-        self.resizable(False, False)
-        self.grab_set()
+        self.setFixedWidth(350)
+        self.setModal(True)
 
-        frame = ttk.Frame(self, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
 
-        ttk.Label(frame, text="Password:").pack(anchor=tk.W)
-        self.pw_entry = ttk.Entry(frame, show="*", width=30)
-        self.pw_entry.pack(pady=(5, 10))
-        self.pw_entry.focus_set()
+        layout.addWidget(QLabel("Password:"))
+        self.pw_entry = QLineEdit()
+        self.pw_entry.setEchoMode(QLineEdit.Password)
+        layout.addWidget(self.pw_entry)
+        self.pw_entry.setFocus()
 
+        self.pw_confirm = None
         if confirm:
-            ttk.Label(frame, text="Conferma password:").pack(anchor=tk.W)
-            self.pw_confirm = ttk.Entry(frame, show="*", width=30)
-            self.pw_confirm.pack(pady=(5, 10))
-        else:
-            self.pw_confirm = None
+            layout.addWidget(QLabel("Conferma password:"))
+            self.pw_confirm = QLineEdit()
+            self.pw_confirm.setEchoMode(QLineEdit.Password)
+            layout.addWidget(self.pw_confirm)
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X)
-        ttk.Button(btn_frame, text="Annulla", command=self.destroy).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(btn_frame, text="OK", command=self._on_ok).pack(side=tk.RIGHT)
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self._on_ok)
+        btn_layout.addWidget(ok_btn)
+        cancel_btn = QPushButton("Annulla")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
 
-        self.bind("<Return>", lambda e: self._on_ok())
-        self.bind("<Escape>", lambda e: self.destroy())
-        self.transient(parent)
-        self.wait_window()
+        self.exec()
 
     def _on_ok(self):
-        pw = self.pw_entry.get()
+        pw = self.pw_entry.text()
         if not pw:
-            messagebox.showwarning("Attenzione", "Inserisci una password.", parent=self)
+            QMessageBox.warning(self, "Attenzione", "Inserisci una password.")
             return
         if self.pw_confirm is not None:
-            if pw != self.pw_confirm.get():
-                messagebox.showwarning("Attenzione", "Le password non coincidono.", parent=self)
+            if pw != self.pw_confirm.text():
+                QMessageBox.warning(self, "Attenzione", "Le password non coincidono.")
                 return
         self.result = pw
-        self.destroy()
+        self.accept()
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self._on_ok()
+        elif event.key() == Qt.Key_Escape:
+            self.reject()
+        else:
+            super().keyPressEvent(event)
 
 
-class AudioRecordDialog(tk.Toplevel):
-    """Dialog per registrazione audio o descrizione per import audio."""
-
+class AudioRecordDialog(QDialog):
     def __init__(self, parent, mode="record", audio_path=None):
         super().__init__(parent)
         self.mode = mode
         self.audio_path = audio_path
         self.result = None
-        self._timer_id = None
+        self._timer = None
         self._elapsed = 0
         self._recording = False
         self._temp_path = None
-        self.configure(bg=BG_SURFACE)
-        self.resizable(False, False)
-        self.grab_set()
+        self.setFixedWidth(400)
+        self.setModal(True)
 
         if mode == "record":
-            self.title("Registra Audio")
+            self.setWindowTitle("Registra Audio")
             self._build_record_ui()
         else:
-            self.title("Descrizione Audio")
+            self.setWindowTitle("Descrizione Audio")
             self._build_describe_ui()
 
-        self.bind("<Escape>", lambda e: self._on_cancel())
-        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
-        self.transient(parent)
-        self.wait_window()
+        self.exec()
 
     def _build_record_ui(self):
-        frame = ttk.Frame(self, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
 
-        ttk.Label(frame, text="Descrizione (opzionale):").pack(anchor=tk.W)
-        self.desc_entry = ttk.Entry(frame, width=40)
-        self.desc_entry.pack(pady=(5, 10))
-        self.desc_entry.focus_set()
+        layout.addWidget(QLabel("Descrizione (opzionale):"))
+        self.desc_entry = QLineEdit()
+        layout.addWidget(self.desc_entry)
 
-        # Timer
-        self.timer_label = ttk.Label(frame, text="00:00", font=(UI_FONT, 18, "bold"))
-        self.timer_label.pack(pady=10)
+        self.timer_label = QLabel("00:00")
+        self.timer_label.setFont(QFont(UI_FONT, 18, QFont.Bold))
+        self.timer_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.timer_label)
 
-        # Status
-        self.status_label = ttk.Label(frame, text="Pronto per registrare", foreground=FG_SECONDARY)
-        self.status_label.pack(pady=(0, 10))
+        self.status_label = QLabel("Pronto per registrare")
+        self.status_label.setStyleSheet(f"color: {FG_SECONDARY};")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.status_label)
 
-        # Record/Stop buttons
-        rec_frame = ttk.Frame(frame)
-        rec_frame.pack(fill=tk.X, pady=5)
-        self.rec_btn = ttk.Button(rec_frame, text="Registra", command=self._toggle_record)
-        self.rec_btn.pack(side=tk.LEFT, padx=2)
-        self.preview_btn = ttk.Button(rec_frame, text="Anteprima", command=self._preview, state=tk.DISABLED)
-        self.preview_btn.pack(side=tk.LEFT, padx=2)
+        rec_layout = QHBoxLayout()
+        self.rec_btn = QPushButton("Registra")
+        self.rec_btn.clicked.connect(self._toggle_record)
+        rec_layout.addWidget(self.rec_btn)
+        self.preview_btn = QPushButton("Anteprima")
+        self.preview_btn.setEnabled(False)
+        self.preview_btn.clicked.connect(self._preview)
+        rec_layout.addWidget(self.preview_btn)
+        layout.addLayout(rec_layout)
 
-        # Check sounddevice availability
         if not audio_utils.is_available():
-            self.rec_btn.config(state=tk.DISABLED)
-            self.status_label.config(
-                text="Libreria 'sounddevice' non installata.\npip install sounddevice",
-                foreground=DANGER
-            )
+            self.rec_btn.setEnabled(False)
+            self.status_label.setText(
+                "Libreria 'sounddevice' non installata.\npip install sounddevice")
+            self.status_label.setStyleSheet(f"color: {DANGER};")
 
-        ttk.Separator(frame).pack(fill=tk.X, pady=10)
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X)
-        ttk.Button(btn_frame, text="Annulla", command=self._on_cancel).pack(side=tk.RIGHT, padx=(5, 0))
-        self.save_btn = ttk.Button(btn_frame, text="Salva", command=self._on_save, state=tk.DISABLED)
-        self.save_btn.pack(side=tk.RIGHT)
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        layout.addWidget(sep)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        self.save_btn = QPushButton("Salva")
+        self.save_btn.setEnabled(False)
+        self.save_btn.clicked.connect(self._on_save)
+        btn_layout.addWidget(self.save_btn)
+        cancel_btn = QPushButton("Annulla")
+        cancel_btn.clicked.connect(self._on_cancel)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
 
     def _build_describe_ui(self):
-        frame = ttk.Frame(self, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
 
         filename = os.path.basename(self.audio_path) if self.audio_path else ""
-        ttk.Label(frame, text=f"File: {filename}").pack(anchor=tk.W, pady=(0, 10))
+        layout.addWidget(QLabel(f"File: {filename}"))
 
-        ttk.Label(frame, text="Descrizione (opzionale):").pack(anchor=tk.W)
-        self.desc_entry = ttk.Entry(frame, width=40)
-        self.desc_entry.pack(pady=(5, 15))
-        self.desc_entry.focus_set()
+        layout.addWidget(QLabel("Descrizione (opzionale):"))
+        self.desc_entry = QLineEdit()
+        layout.addWidget(self.desc_entry)
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X)
-        ttk.Button(btn_frame, text="Annulla", command=self._on_cancel).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(btn_frame, text="OK", command=self._on_save).pack(side=tk.RIGHT)
-        self.bind("<Return>", lambda e: self._on_save())
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self._on_save)
+        btn_layout.addWidget(ok_btn)
+        cancel_btn = QPushButton("Annulla")
+        cancel_btn.clicked.connect(self._on_cancel)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
 
     def _toggle_record(self):
         if not self._recording:
@@ -438,34 +496,36 @@ class AudioRecordDialog(tk.Toplevel):
         try:
             audio_utils.record_audio()
         except Exception as e:
-            messagebox.showerror("Errore", f"Impossibile avviare la registrazione:\n{e}", parent=self)
+            QMessageBox.critical(self, "Errore",
+                                 f"Impossibile avviare la registrazione:\n{e}")
             return
         self._recording = True
         self._elapsed = 0
-        self.rec_btn.config(text="Stop")
-        self.preview_btn.config(state=tk.DISABLED)
-        self.save_btn.config(state=tk.DISABLED)
-        self.status_label.config(text="Registrazione in corso...", foreground=DANGER)
-        self._update_timer()
+        self.rec_btn.setText("Stop")
+        self.preview_btn.setEnabled(False)
+        self.save_btn.setEnabled(False)
+        self.status_label.setText("Registrazione in corso...")
+        self.status_label.setStyleSheet(f"color: {DANGER};")
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._update_timer)
+        self._timer.start(1000)
 
     def _stop_recording(self):
-        if self._timer_id:
-            self.after_cancel(self._timer_id)
-            self._timer_id = None
+        if self._timer:
+            self._timer.stop()
+            self._timer = None
         self._recording = False
         audio_utils.stop_recording(self._temp_path)
-        self.rec_btn.config(text="Registra")
-        self.preview_btn.config(state=tk.NORMAL)
-        self.save_btn.config(state=tk.NORMAL)
-        self.status_label.config(text="Registrazione completata", foreground=SUCCESS)
+        self.rec_btn.setText("Registra")
+        self.preview_btn.setEnabled(True)
+        self.save_btn.setEnabled(True)
+        self.status_label.setText("Registrazione completata")
+        self.status_label.setStyleSheet(f"color: {SUCCESS};")
 
     def _update_timer(self):
-        if not self._recording:
-            return
         self._elapsed += 1
         mins, secs = divmod(self._elapsed, 60)
-        self.timer_label.config(text=f"{mins:02d}:{secs:02d}")
-        self._timer_id = self.after(1000, self._update_timer)
+        self.timer_label.setText(f"{mins:02d}:{secs:02d}")
 
     def _preview(self):
         if self._temp_path and os.path.exists(self._temp_path):
@@ -475,317 +535,345 @@ class AudioRecordDialog(tk.Toplevel):
         if self._recording:
             self._stop_recording()
 
-        desc = self.desc_entry.get().strip()
+        desc = self.desc_entry.text().strip()
 
         if self.mode == "record":
             if not self._temp_path or not os.path.exists(self._temp_path):
-                messagebox.showwarning("Attenzione", "Nessuna registrazione effettuata.", parent=self)
+                QMessageBox.warning(self, "Attenzione",
+                                    "Nessuna registrazione effettuata.")
                 return
             self.result = {"path": self._temp_path, "description": desc}
         else:
             self.result = {"path": self.audio_path, "description": desc}
-        self.destroy()
+        self.accept()
 
     def _on_cancel(self):
         if self._recording:
             self._stop_recording()
-        # Cleanup temp file on cancel
         if self.mode == "record" and self._temp_path and os.path.exists(self._temp_path):
             try:
                 os.remove(self._temp_path)
             except OSError:
                 pass
         self.result = None
-        self.destroy()
+        self.reject()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self._on_cancel()
+        elif event.key() in (Qt.Key_Return, Qt.Key_Enter) and self.mode == "describe":
+            self._on_save()
+        else:
+            super().keyPressEvent(event)
 
 
-class BackupSettingsDialog(tk.Toplevel):
-    """Dialog to configure backup settings with integrated Google Drive auth."""
-
+class BackupSettingsDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
-        self.title("Impostazioni Backup")
-        self.configure(bg=BG_SURFACE)
-        self.resizable(False, False)
-        self.grab_set()
+        self.setWindowTitle("Impostazioni Backup")
+        self.setMinimumWidth(500)
+        self.setModal(True)
 
         import backup_utils
         self.backup_utils = backup_utils
         self.settings = backup_utils.get_settings()
 
-        frame = ttk.Frame(self, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
 
         # --- Local Backup ---
-        ttk.Label(frame, text="Backup Locale", font=(UI_FONT, FONT_BASE, "bold")).pack(anchor=tk.W)
+        local_label = QLabel("Backup Locale")
+        local_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Bold))
+        layout.addWidget(local_label)
 
-        self.auto_var = tk.BooleanVar(value=self.settings.get("auto_backup", True))
-        ttk.Checkbutton(frame, text="Backup automatico alla chiusura", variable=self.auto_var).pack(anchor=tk.W, pady=(5, 0))
+        self.auto_cb = QCheckBox("Backup automatico alla chiusura")
+        self.auto_cb.setChecked(self.settings.get("auto_backup", True))
+        layout.addWidget(self.auto_cb)
 
-        dir_frame = ttk.Frame(frame)
-        dir_frame.pack(fill=tk.X, pady=(10, 5))
-        ttk.Label(dir_frame, text="Cartella backup locale:").pack(anchor=tk.W)
-        self.dir_var = tk.StringVar(value=self.settings.get("local_backup_dir", ""))
-        ttk.Entry(dir_frame, textvariable=self.dir_var, width=40).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Button(dir_frame, text="...", width=3,
-                   command=self._browse_dir).pack(side=tk.LEFT, padx=5)
+        dir_layout = QHBoxLayout()
+        dir_layout.addWidget(QLabel("Cartella backup locale:"))
+        self.dir_entry = QLineEdit(self.settings.get("local_backup_dir", ""))
+        dir_layout.addWidget(self.dir_entry)
+        browse_btn = QPushButton("...")
+        browse_btn.setFixedWidth(30)
+        browse_btn.clicked.connect(self._browse_dir)
+        dir_layout.addWidget(browse_btn)
+        layout.addLayout(dir_layout)
 
-        max_frame = ttk.Frame(frame)
-        max_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(max_frame, text="Max backup locali:").pack(side=tk.LEFT)
-        self.max_var = tk.IntVar(value=self.settings.get("max_local_backups", 10))
-        ttk.Spinbox(max_frame, from_=1, to=100, textvariable=self.max_var, width=5).pack(side=tk.LEFT, padx=5)
+        max_layout = QHBoxLayout()
+        max_layout.addWidget(QLabel("Max backup locali:"))
+        self.max_spin = QSpinBox()
+        self.max_spin.setRange(1, 100)
+        self.max_spin.setValue(self.settings.get("max_local_backups", 10))
+        max_layout.addWidget(self.max_spin)
+        max_layout.addStretch()
+        layout.addLayout(max_layout)
 
-        ret_frame = ttk.Frame(frame)
-        ret_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(ret_frame, text="Cancella backup piu vecchi di (giorni):").pack(side=tk.LEFT)
-        self.retention_var = tk.IntVar(value=self.settings.get("retention_days", 90))
-        ttk.Spinbox(ret_frame, from_=0, to=365, textvariable=self.retention_var, width=5).pack(side=tk.LEFT, padx=5)
-        ttk.Label(ret_frame, text="0 = mai", foreground=FG_SECONDARY).pack(side=tk.LEFT)
+        ret_layout = QHBoxLayout()
+        ret_layout.addWidget(QLabel("Cancella backup piu vecchi di (giorni):"))
+        self.retention_spin = QSpinBox()
+        self.retention_spin.setRange(0, 365)
+        self.retention_spin.setValue(self.settings.get("retention_days", 90))
+        ret_layout.addWidget(self.retention_spin)
+        ret_layout.addWidget(QLabel("0 = mai"))
+        ret_layout.addStretch()
+        layout.addLayout(ret_layout)
 
         # --- Google Drive ---
-        ttk.Separator(frame).pack(fill=tk.X, pady=10)
-        ttk.Label(frame, text="Google Drive", font=(UI_FONT, FONT_BASE, "bold")).pack(anchor=tk.W)
+        sep1 = QFrame()
+        sep1.setFrameShape(QFrame.HLine)
+        layout.addWidget(sep1)
 
-        # Connection status
-        status_frame = ttk.Frame(frame)
-        status_frame.pack(fill=tk.X, pady=(5, 5))
+        gdrive_label = QLabel("Google Drive")
+        gdrive_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Bold))
+        layout.addWidget(gdrive_label)
 
-        self.status_label = ttk.Label(status_frame, text="")
-        self.status_label.pack(side=tk.LEFT)
-
-        self.auth_btn = ttk.Button(status_frame, text="", command=self._toggle_gdrive_auth)
-        self.auth_btn.pack(side=tk.RIGHT)
-
+        status_layout = QHBoxLayout()
+        self.gdrive_status_label = QLabel("")
+        status_layout.addWidget(self.gdrive_status_label)
+        status_layout.addStretch()
+        self.auth_btn = QPushButton("")
+        self.auth_btn.clicked.connect(self._toggle_gdrive_auth)
+        status_layout.addWidget(self.auth_btn)
+        layout.addLayout(status_layout)
         self._update_gdrive_status()
 
-        # Enable checkbox
-        self.gdrive_var = tk.BooleanVar(value=self.settings.get("gdrive_enabled", False))
-        self.gdrive_check = ttk.Checkbutton(frame, text="Abilita backup su Google Drive",
-                                            variable=self.gdrive_var)
-        self.gdrive_check.pack(anchor=tk.W, pady=(5, 0))
+        self.gdrive_cb = QCheckBox("Abilita backup su Google Drive")
+        self.gdrive_cb.setChecked(self.settings.get("gdrive_enabled", False))
+        layout.addWidget(self.gdrive_cb)
 
-        # Folder name
-        folder_frame = ttk.Frame(frame)
-        folder_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(folder_frame, text="Nome cartella su Drive:").pack(anchor=tk.W)
-        self.folder_var = tk.StringVar(value=self.settings.get("gdrive_folder_name", "MyNotes Backup"))
-        ttk.Entry(folder_frame, textvariable=self.folder_var, width=40).pack(fill=tk.X)
+        folder_layout = QHBoxLayout()
+        folder_layout.addWidget(QLabel("Nome cartella su Drive:"))
+        self.folder_entry = QLineEdit(
+            self.settings.get("gdrive_folder_name", "MyNotes Backup"))
+        folder_layout.addWidget(self.folder_entry)
+        layout.addLayout(folder_layout)
 
-        gdrive_max_frame = ttk.Frame(frame)
-        gdrive_max_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(gdrive_max_frame, text="Max backup su Drive:").pack(side=tk.LEFT)
-        self.gdrive_max_var = tk.IntVar(value=self.settings.get("max_gdrive_backups", 20))
-        ttk.Spinbox(gdrive_max_frame, from_=0, to=100, textvariable=self.gdrive_max_var, width=5).pack(side=tk.LEFT, padx=5)
-        ttk.Label(gdrive_max_frame, text="0 = illimitato", foreground=FG_SECONDARY).pack(side=tk.LEFT)
+        gdrive_max_layout = QHBoxLayout()
+        gdrive_max_layout.addWidget(QLabel("Max backup su Drive:"))
+        self.gdrive_max_spin = QSpinBox()
+        self.gdrive_max_spin.setRange(0, 100)
+        self.gdrive_max_spin.setValue(self.settings.get("max_gdrive_backups", 20))
+        gdrive_max_layout.addWidget(self.gdrive_max_spin)
+        gdrive_max_layout.addWidget(QLabel("0 = illimitato"))
+        gdrive_max_layout.addStretch()
+        layout.addLayout(gdrive_max_layout)
 
         # --- Crittografia ---
-        ttk.Separator(frame).pack(fill=tk.X, pady=10)
-        ttk.Label(frame, text="Crittografia", font=(UI_FONT, FONT_BASE, "bold")).pack(anchor=tk.W)
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.HLine)
+        layout.addWidget(sep2)
 
-        self.encrypt_var = tk.BooleanVar(value=self.settings.get("encrypt_backups", False))
-        ttk.Checkbutton(frame, text="Cripta backup con password",
-                        variable=self.encrypt_var).pack(anchor=tk.W, pady=(5, 0))
+        enc_label = QLabel("Crittografia")
+        enc_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Bold))
+        layout.addWidget(enc_label)
 
-        pw_status = "Password impostata" if backup_utils._get_backup_password() else "Password non impostata"
-        pw_color = SUCCESS if backup_utils._get_backup_password() else FG_SECONDARY
-        self.pw_status_label = ttk.Label(frame, text=pw_status, foreground=pw_color)
-        self.pw_status_label.pack(anchor=tk.W, pady=(2, 0))
+        self.encrypt_cb = QCheckBox("Cripta backup con password")
+        self.encrypt_cb.setChecked(self.settings.get("encrypt_backups", False))
+        layout.addWidget(self.encrypt_cb)
+
+        pw_set = backup_utils._get_backup_password()
+        pw_status = "Password impostata" if pw_set else "Password non impostata"
+        pw_color = SUCCESS if pw_set else FG_SECONDARY
+        self.pw_status_label = QLabel(pw_status)
+        self.pw_status_label.setStyleSheet(f"color: {pw_color};")
+        layout.addWidget(self.pw_status_label)
 
         # --- Scheduler ---
-        ttk.Separator(frame).pack(fill=tk.X, pady=10)
-        ttk.Label(frame, text="Backup Automatico", font=(UI_FONT, FONT_BASE, "bold")).pack(anchor=tk.W)
+        sep3 = QFrame()
+        sep3.setFrameShape(QFrame.HLine)
+        layout.addWidget(sep3)
 
-        interval_frame = ttk.Frame(frame)
-        interval_frame.pack(fill=tk.X, pady=(5, 5))
-        ttk.Label(interval_frame, text="Intervallo backup:").pack(side=tk.LEFT)
+        sched_label = QLabel("Backup Automatico")
+        sched_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Bold))
+        layout.addWidget(sched_label)
 
+        interval_layout = QHBoxLayout()
+        interval_layout.addWidget(QLabel("Intervallo backup:"))
         self._interval_labels = ["Disabilitato", "30 minuti", "1 ora", "2 ore",
                                  "4 ore", "8 ore", "12 ore", "24 ore"]
         self._interval_values = [0, 30, 60, 120, 240, 480, 720, 1440]
-        self.interval_combo = ttk.Combobox(interval_frame, values=self._interval_labels,
-                                           state="readonly", width=15)
+        self.interval_combo = QComboBox()
+        self.interval_combo.addItems(self._interval_labels)
         current_interval = self.settings.get("backup_interval_minutes", 0)
-        idx = self._interval_values.index(current_interval) if current_interval in self._interval_values else 0
-        self.interval_combo.current(idx)
-        self.interval_combo.pack(side=tk.LEFT, padx=5)
+        idx = (self._interval_values.index(current_interval)
+               if current_interval in self._interval_values else 0)
+        self.interval_combo.setCurrentIndex(idx)
+        interval_layout.addWidget(self.interval_combo)
+        interval_layout.addStretch()
+        layout.addLayout(interval_layout)
 
         last_backup = self.settings.get("last_backup_time", "")
-        last_text = f"Ultimo backup: {last_backup}" if last_backup else "Ultimo backup: mai"
-        ttk.Label(frame, text=last_text, foreground=FG_SECONDARY).pack(anchor=tk.W, pady=(2, 0))
+        last_text = (f"Ultimo backup: {last_backup}"
+                     if last_backup else "Ultimo backup: mai")
+        last_label = QLabel(last_text)
+        last_label.setStyleSheet(f"color: {FG_SECONDARY};")
+        layout.addWidget(last_label)
 
-        # Buttons
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X, pady=(15, 0))
-        ttk.Button(btn_frame, text="Annulla", command=self.destroy).pack(side=tk.RIGHT)
-        ttk.Button(btn_frame, text="Salva", command=self._save).pack(side=tk.RIGHT, padx=5)
+        # --- Buttons ---
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        save_btn = QPushButton("Salva")
+        save_btn.clicked.connect(self._save)
+        btn_layout.addWidget(save_btn)
+        cancel_btn = QPushButton("Annulla")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
 
-        self.bind("<Escape>", lambda e: self.destroy())
-        self.transient(parent)
-        self.wait_window()
+        self.exec()
 
     def _update_gdrive_status(self):
         if self.backup_utils.is_gdrive_configured():
-            self.status_label.config(text="Connesso a Google Drive", foreground=SUCCESS)
-            self.auth_btn.config(text="Disconnetti")
+            self.gdrive_status_label.setText("Connesso a Google Drive")
+            self.gdrive_status_label.setStyleSheet(f"color: {SUCCESS};")
+            self.auth_btn.setText("Disconnetti")
         else:
-            self.status_label.config(text="Non connesso", foreground=FG_SECONDARY)
-            self.auth_btn.config(text="Accedi con Google")
+            self.gdrive_status_label.setText("Non connesso")
+            self.gdrive_status_label.setStyleSheet(f"color: {FG_SECONDARY};")
+            self.auth_btn.setText("Accedi con Google")
 
     def _toggle_gdrive_auth(self):
         if self.backup_utils.is_gdrive_configured():
-            if messagebox.askyesno("Disconnetti", "Rimuovere l'autorizzazione Google Drive?", parent=self):
+            if QMessageBox.question(
+                self, "Disconnetti",
+                "Rimuovere l'autorizzazione Google Drive?"
+            ) == QMessageBox.Yes:
                 self.backup_utils.gdrive_disconnect()
-                self.gdrive_var.set(False)
+                self.gdrive_cb.setChecked(False)
                 self._update_gdrive_status()
         else:
-            self.auth_btn.config(state=tk.DISABLED, text="Autorizzazione in corso...")
-            self.update_idletasks()
+            self.auth_btn.setEnabled(False)
+            self.auth_btn.setText("Autorizzazione in corso...")
 
             import threading
-
             def _do_auth():
                 success, msg = self.backup_utils.gdrive_authorize()
-                self.after(0, lambda: self._auth_done(success, msg))
+                QTimer.singleShot(0, lambda: self._auth_done(success, msg))
 
             threading.Thread(target=_do_auth, daemon=True).start()
 
     def _auth_done(self, success, msg):
-        self.auth_btn.config(state=tk.NORMAL)
+        self.auth_btn.setEnabled(True)
         if success:
-            messagebox.showinfo("Google Drive", msg, parent=self)
+            QMessageBox.information(self, "Google Drive", msg)
         else:
-            messagebox.showerror("Errore", msg, parent=self)
+            QMessageBox.critical(self, "Errore", msg)
         self._update_gdrive_status()
 
     def _browse_dir(self):
-        d = filedialog.askdirectory(parent=self, title="Cartella backup")
+        d = QFileDialog.getExistingDirectory(self, "Cartella backup")
         if d:
-            self.dir_var.set(d)
+            self.dir_entry.setText(d)
 
     def _save(self):
-        self.settings["auto_backup"] = self.auto_var.get()
-        self.settings["local_backup_dir"] = self.dir_var.get()
-        self.settings["max_local_backups"] = self.max_var.get()
-        self.settings["retention_days"] = self.retention_var.get()
-        self.settings["gdrive_enabled"] = self.gdrive_var.get()
-        self.settings["gdrive_folder_name"] = self.folder_var.get()
-        self.settings["max_gdrive_backups"] = self.gdrive_max_var.get()
+        self.settings["auto_backup"] = self.auto_cb.isChecked()
+        self.settings["local_backup_dir"] = self.dir_entry.text()
+        self.settings["max_local_backups"] = self.max_spin.value()
+        self.settings["retention_days"] = self.retention_spin.value()
+        self.settings["gdrive_enabled"] = self.gdrive_cb.isChecked()
+        self.settings["gdrive_folder_name"] = self.folder_entry.text()
+        self.settings["max_gdrive_backups"] = self.gdrive_max_spin.value()
 
-        # Crittografia backup
-        encrypt = self.encrypt_var.get()
+        encrypt = self.encrypt_cb.isChecked()
         self.settings["encrypt_backups"] = encrypt
         if encrypt and not self.backup_utils._get_backup_password():
-            # Chiedi password se non impostata
             pwd_dlg = PasswordDialog(self, title="Password backup", confirm=True)
             if pwd_dlg.result:
                 self.backup_utils.set_backup_password(pwd_dlg.result)
             else:
                 self.settings["encrypt_backups"] = False
 
-        # Scheduler
-        self.settings["backup_interval_minutes"] = self._interval_values[self.interval_combo.current()]
+        self.settings["backup_interval_minutes"] = \
+            self._interval_values[self.interval_combo.currentIndex()]
 
         self.backup_utils.save_settings(self.settings)
-        messagebox.showinfo("Salvato", "Impostazioni backup salvate.", parent=self)
-        self.destroy()
+        QMessageBox.information(self, "Salvato", "Impostazioni backup salvate.")
+        self.accept()
 
 
-class BackupRestoreDialog(tk.Toplevel):
-    """Dialog per selezionare e ripristinare un backup."""
-
+class BackupRestoreDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
-        self.title("Ripristina Backup")
-        self.configure(bg=BG_SURFACE)
+        self.setWindowTitle("Ripristina Backup")
         self.result = None
-        self.geometry("650x500")
-        self.grab_set()
+        self.resize(650, 500)
+        self.setModal(True)
 
         import backup_utils
         self.backup_utils = backup_utils
 
-        frame = ttk.Frame(self, padding=15)
-        frame.pack(fill=tk.BOTH, expand=True)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
 
-        ttk.Label(frame, text="Backup disponibili:", font=(UI_FONT, FONT_BASE, "bold")).pack(anchor=tk.W)
+        layout.addWidget(QLabel("Backup disponibili:"))
 
-        # Backup list
-        list_frame = ttk.Frame(frame)
-        list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        self.backup_list = QListWidget()
+        self.backup_list.currentRowChanged.connect(self._on_select)
+        layout.addWidget(self.backup_list)
 
-        self.backup_list = tk.Listbox(list_frame, font=(UI_FONT, FONT_BASE),
-                                       bg=BG_ELEVATED, fg=FG_PRIMARY,
-                                       selectbackground=SELECT_BG, selectforeground=SELECT_FG,
-                                       borderwidth=0, highlightthickness=0)
-        scroll = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.backup_list.yview)
-        self.backup_list.configure(yscrollcommand=scroll.set)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.backup_list.pack(fill=tk.BOTH, expand=True)
-        self.backup_list.bind("<<ListboxSelect>>", lambda e: self._on_select())
+        detail_group = QGroupBox("Dettagli")
+        detail_layout = QVBoxLayout(detail_group)
+        self.detail_date = QLabel("Data: -")
+        detail_layout.addWidget(self.detail_date)
+        self.detail_size = QLabel("Dimensione: -")
+        detail_layout.addWidget(self.detail_size)
+        self.detail_notes = QLabel("Note: -")
+        detail_layout.addWidget(self.detail_notes)
+        self.detail_integrity = QLabel("Integrita': -")
+        detail_layout.addWidget(self.detail_integrity)
+        self.detail_checksum = QLabel("Checksum: -")
+        detail_layout.addWidget(self.detail_checksum)
+        self.detail_encrypted = QLabel("")
+        detail_layout.addWidget(self.detail_encrypted)
+        layout.addWidget(detail_group)
 
-        # Pannello dettagli
-        detail_frame = ttk.LabelFrame(frame, text="Dettagli", padding=10)
-        detail_frame.pack(fill=tk.X, pady=5)
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        restore_btn = QPushButton("Ripristina")
+        restore_btn.clicked.connect(self._restore)
+        btn_layout.addWidget(restore_btn)
+        close_btn = QPushButton("Chiudi")
+        close_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
 
-        self.detail_date = ttk.Label(detail_frame, text="Data: -")
-        self.detail_date.pack(anchor=tk.W)
-        self.detail_size = ttk.Label(detail_frame, text="Dimensione: -")
-        self.detail_size.pack(anchor=tk.W)
-        self.detail_notes = ttk.Label(detail_frame, text="Note: -")
-        self.detail_notes.pack(anchor=tk.W)
-        self.detail_integrity = ttk.Label(detail_frame, text="Integrita': -")
-        self.detail_integrity.pack(anchor=tk.W)
-        self.detail_checksum = ttk.Label(detail_frame, text="Checksum: -")
-        self.detail_checksum.pack(anchor=tk.W)
-        self.detail_encrypted = ttk.Label(detail_frame, text="")
-        self.detail_encrypted.pack(anchor=tk.W)
-
-        # Buttons
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X, pady=(5, 0))
-        ttk.Button(btn_frame, text="Chiudi", command=self.destroy).pack(side=tk.RIGHT)
-        ttk.Button(btn_frame, text="Ripristina", command=self._restore).pack(side=tk.RIGHT, padx=5)
-
-        # Carica lista backup
         settings = backup_utils.get_settings()
         backup_dir = settings.get("local_backup_dir", db.BACKUP_DIR)
         self.backups = db.get_backups(backup_dir)
         for b in self.backups:
             enc_label = " [crittografato]" if b["encrypted"] else ""
             size_kb = b["size"] / 1024
-            self.backup_list.insert(
-                tk.END,
+            self.backup_list.addItem(
                 f"{b['date_str']}  ({size_kb:.0f} KB){enc_label}"
             )
 
         if not self.backups:
-            self.backup_list.insert(tk.END, "Nessun backup disponibile.")
+            self.backup_list.addItem("Nessun backup disponibile.")
 
-        self.bind("<Escape>", lambda e: self.destroy())
-        self.transient(parent)
-        self.wait_window()
+        self.exec()
 
-    def _on_select(self):
-        sel = self.backup_list.curselection()
-        if not sel or not self.backups:
+    def _on_select(self, row):
+        if row < 0 or not self.backups:
             return
-        b = self.backups[sel[0]]
-        self.detail_date.config(text=f"Data: {b['date_str']}")
+        b = self.backups[row]
+        self.detail_date.setText(f"Data: {b['date_str']}")
         size_kb = b["size"] / 1024
-        self.detail_size.config(text=f"Dimensione: {size_kb:.1f} KB")
+        self.detail_size.setText(f"Dimensione: {size_kb:.1f} KB")
 
         if b["encrypted"]:
-            self.detail_encrypted.config(text="Crittografato: Si'")
-            self.detail_notes.config(text="Note: (richiede password)")
-            self.detail_integrity.config(text="Integrita': (richiede decrittografia)")
+            self.detail_encrypted.setText("Crittografato: Si'")
+            self.detail_notes.setText("Note: (richiede password)")
+            self.detail_integrity.setText("Integrita': (richiede decrittografia)")
         else:
-            self.detail_encrypted.config(text="")
+            self.detail_encrypted.setText("")
             count = self.backup_utils.get_note_count_from_backup(b["path"])
-            self.detail_notes.config(text=f"Note: {count}" if count >= 0 else "Note: errore lettura")
+            self.detail_notes.setText(
+                f"Note: {count}" if count >= 0 else "Note: errore lettura")
             ok, msg = self.backup_utils.verify_backup_integrity(b["path"])
             color = SUCCESS if ok else DANGER
-            self.detail_integrity.config(text=f"Integrita': {msg}", foreground=color)
+            self.detail_integrity.setText(f"Integrita': {msg}")
+            self.detail_integrity.setStyleSheet(f"color: {color};")
 
         ok_cs, msg_cs = self.backup_utils.verify_checksum(b["path"])
         if ok_cs is True:
@@ -794,13 +882,14 @@ class BackupRestoreDialog(tk.Toplevel):
             color_cs = DANGER
         else:
             color_cs = FG_SECONDARY
-        self.detail_checksum.config(text=f"Checksum: {msg_cs}", foreground=color_cs)
+        self.detail_checksum.setText(f"Checksum: {msg_cs}")
+        self.detail_checksum.setStyleSheet(f"color: {color_cs};")
 
     def _restore(self):
-        sel = self.backup_list.curselection()
-        if not sel or not self.backups:
+        row = self.backup_list.currentRow()
+        if row < 0 or not self.backups:
             return
-        b = self.backups[sel[0]]
+        b = self.backups[row]
         password = None
 
         if b["encrypted"]:
@@ -812,8 +901,10 @@ class BackupRestoreDialog(tk.Toplevel):
         msg = ("Il database attuale verra' sostituito.\n"
                "Un backup di sicurezza verra' creato automaticamente.\n\n"
                "Continuare con il ripristino?")
-        if not messagebox.askyesno("Conferma ripristino", msg, parent=self):
+        if QMessageBox.question(
+            self, "Conferma ripristino", msg
+        ) != QMessageBox.Yes:
             return
 
         self.result = {"path": b["path"], "password": password}
-        self.destroy()
+        self.accept()

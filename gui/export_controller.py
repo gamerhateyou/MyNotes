@@ -1,8 +1,7 @@
-"""Export HTML, PDF, .mynote and import."""
+"""Export HTML, PDF, .mynote and import (PySide6)."""
 
 import os
-import tkinter as tk
-from tkinter import messagebox, filedialog
+from PySide6.QtWidgets import QMessageBox, QFileDialog
 import database as db
 import platform_utils
 
@@ -16,27 +15,27 @@ class ExportController:
         if app.current_note_id is None:
             return
         note = db.get_note(app.current_note_id)
-        path = filedialog.asksaveasfilename(
-            parent=app.root, title="Esporta HTML",
-            defaultextension=".html", initialfile=f"{note['title']}.html",
-            filetypes=[("HTML", "*.html")]
+        path, _ = QFileDialog.getSaveFileName(
+            app, "Esporta HTML",
+            f"{note['title']}.html",
+            "HTML (*.html)"
         )
         if path:
             self._write_html(path, [note])
-            app.status_var.set(f"Esportato: {path}")
+            app.statusBar().showMessage(f"Esportato: {path}")
             platform_utils.open_file(path)
 
     def export_all_html(self):
         app = self.app
-        path = filedialog.asksaveasfilename(
-            parent=app.root, title="Esporta tutte le note HTML",
-            defaultextension=".html", initialfile="MyNotes_export.html",
-            filetypes=[("HTML", "*.html")]
+        path, _ = QFileDialog.getSaveFileName(
+            app, "Esporta tutte le note HTML",
+            "MyNotes_export.html",
+            "HTML (*.html)"
         )
         if path:
             notes = db.get_all_notes()
             self._write_html(path, notes)
-            app.status_var.set(f"Esportate {len(notes)} note: {path}")
+            app.statusBar().showMessage(f"Esportate {len(notes)} note: {path}")
 
     def _write_html(self, path, notes):
         import html as html_mod
@@ -62,7 +61,7 @@ class ExportController:
             tags = db.get_note_tags(note["id"])
             tag_str = " ".join(f"#{t['name']}" for t in tags)
 
-            lines.append(f'<div class="note">')
+            lines.append('<div class="note">')
             lines.append(f'<h2>{html_mod.escape(note["title"])}</h2>')
             lines.append(f'<div class="meta">{note["created_at"][:10]} | {tag_str}</div>')
             lines.append("\n".join(html_lines))
@@ -77,10 +76,10 @@ class ExportController:
         if app.current_note_id is None:
             return
         note = db.get_note(app.current_note_id)
-        path = filedialog.asksaveasfilename(
-            parent=app.root, title="Esporta PDF",
-            defaultextension=".pdf", initialfile=f"{note['title']}.pdf",
-            filetypes=[("PDF", "*.pdf")]
+        path, _ = QFileDialog.getSaveFileName(
+            app, "Esporta PDF",
+            f"{note['title']}.pdf",
+            "PDF (*.pdf)"
         )
         if not path:
             return
@@ -105,14 +104,13 @@ class ExportController:
                 c.drawString(40, y, line[:100])
                 y -= 15
             c.save()
-            app.status_var.set(f"PDF esportato: {path}")
+            app.statusBar().showMessage(f"PDF esportato: {path}")
         except ImportError:
-            messagebox.showwarning(
-                "PDF",
+            QMessageBox.warning(
+                app, "PDF",
                 "Per esportare in PDF serve reportlab.\n"
                 "Installa con: pip install reportlab\n\n"
-                "In alternativa usa l'esportazione HTML.",
-                parent=app.root
+                "In alternativa usa l'esportazione HTML."
             )
 
     def export_mynote(self):
@@ -120,24 +118,26 @@ class ExportController:
         if app.current_note_id is None:
             return
         note = db.get_note(app.current_note_id)
-        path = filedialog.asksaveasfilename(
-            parent=app.root, title="Condividi nota",
-            defaultextension=".mynote", initialfile=f"{note['title']}.mynote",
-            filetypes=[("MyNotes", "*.mynote")]
+        path, _ = QFileDialog.getSaveFileName(
+            app, "Condividi nota",
+            f"{note['title']}.mynote",
+            "MyNotes (*.mynote)"
         )
         if path:
             try:
                 db.export_note(app.current_note_id, path)
-                app.status_var.set(f"Nota condivisa: {os.path.basename(path)}")
-                messagebox.showinfo("Condividi", f"Nota esportata:\n{path}\n\nCondividi questo file per importarlo in un'altra app MyNotes.", parent=app.root)
+                app.statusBar().showMessage(f"Nota condivisa: {os.path.basename(path)}")
+                QMessageBox.information(app, "Condividi",
+                                        f"Nota esportata:\n{path}\n\n"
+                                        "Condividi questo file per importarlo in un'altra app MyNotes.")
             except Exception as e:
-                messagebox.showerror("Errore", f"Esportazione fallita: {e}", parent=app.root)
+                QMessageBox.critical(app, "Errore", f"Esportazione fallita: {e}")
 
     def import_mynote(self):
         app = self.app
-        paths = filedialog.askopenfilenames(
-            parent=app.root, title="Importa nota",
-            filetypes=[("MyNotes", "*.mynote"), ("Tutti", "*.*")]
+        paths, _ = QFileDialog.getOpenFileNames(
+            app, "Importa nota",
+            "", "MyNotes (*.mynote);;Tutti (*.*)"
         )
         if not paths:
             return
@@ -147,8 +147,10 @@ class ExportController:
                 db.import_note(path, category_id=None)
                 imported += 1
             except Exception as e:
-                messagebox.showerror("Errore", f"Importazione fallita per {os.path.basename(path)}:\n{e}", parent=app.root)
+                QMessageBox.critical(app, "Errore",
+                                     f"Importazione fallita per {os.path.basename(path)}:\n{e}")
         if imported:
             app.notes_ctl.load_notes()
-            app.status_var.set(f"Importate {imported} nota/e")
-            messagebox.showinfo("Importa", f"{imported} nota/e importate con successo!", parent=app.root)
+            app.statusBar().showMessage(f"Importate {imported} nota/e")
+            QMessageBox.information(app, "Importa",
+                                    f"{imported} nota/e importate con successo!")

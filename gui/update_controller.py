@@ -1,12 +1,15 @@
-"""Auto-update from GitHub Releases."""
+"""Auto-update from GitHub Releases (PySide6)."""
 
 import logging
-import tkinter as tk
-from tkinter import ttk, messagebox
 import threading
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+                                QPushButton, QProgressBar, QPlainTextEdit,
+                                QGroupBox, QMessageBox)
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont
 import updater
 from version import VERSION
-from gui.constants import UI_FONT
+from gui.constants import UI_FONT, FG_SECONDARY
 from error_codes import AppError
 
 log = logging.getLogger("updater.gui")
@@ -32,16 +35,14 @@ class UpdateController:
                 return
             if result:
                 tag, url, notes = result
-                self.app.root.after(0, lambda: self._show_update_available(tag, url, notes))
+                QTimer.singleShot(0, lambda: self._show_update_available(tag, url, notes))
 
         threading.Thread(target=_check, daemon=True).start()
 
     def check(self):
-        """Check manuale da menu: ignora skip e auto_check, riabilita se disabilitato."""
         log.info("check() avviato dall'utente")
-        self.app.status_var.set("Controllo aggiornamenti...")
+        self.app.statusBar().showMessage("Controllo aggiornamenti...")
 
-        # Riabilita auto_check e pulisci skip
         settings = updater.get_update_settings()
         if not settings.get("auto_check", True) or settings.get("skipped_versions"):
             settings["auto_check"] = True
@@ -53,72 +54,75 @@ class UpdateController:
             try:
                 result = updater.check_for_updates()
                 log.info("check_for_updates() ritornato: %s", result)
-                self.app.root.after(0, lambda: self._handle_result(result))
+                QTimer.singleShot(0, lambda: self._handle_result(result))
             except AppError as e:
                 log.warning("Errore strutturato nel controllo: %s", e, exc_info=True)
-                self.app.root.after(0, lambda: self._handle_error(e.code, e.message, e.detail))
+                QTimer.singleShot(0, lambda: self._handle_error(e.code, e.message, e.detail))
             except Exception as e:
-                log.error("Eccezione nel thread di controllo: %s: %s", type(e).__name__, e, exc_info=True)
-                self.app.root.after(0, lambda: self._handle_error(None, str(e), ""))
+                log.error("Eccezione nel thread di controllo: %s: %s",
+                          type(e).__name__, e, exc_info=True)
+                QTimer.singleShot(0, lambda: self._handle_error(None, str(e), ""))
 
         threading.Thread(target=_check, daemon=True).start()
 
     def _handle_error(self, code, message, detail):
         log.info("_handle_error: code=%s message=%s detail=%s", code, message, detail)
         if code:
-            self.app.status_var.set(f"Errore: {code}")
+            self.app.statusBar().showMessage(f"Errore: {code}")
             body = f"Impossibile verificare aggiornamenti.\n\nCodice errore: {code}\n{message}"
             if detail:
                 body += f"\n\nDettaglio: {detail}"
             body += "\n\nFile di log: data/mynotes.log"
         else:
-            self.app.status_var.set("Errore controllo aggiornamenti")
+            self.app.statusBar().showMessage("Errore controllo aggiornamenti")
             body = f"Impossibile verificare aggiornamenti.\n\n{message}"
             body += "\n\nFile di log: data/mynotes.log"
-        messagebox.showerror("Errore", body, parent=self.app.root)
+        QMessageBox.critical(self.app, "Errore", body)
 
     def _handle_result(self, result):
         log.info("_handle_result: %s", result)
         if result is None:
-            self.app.status_var.set("Nessun aggiornamento")
-            messagebox.showinfo("Aggiornamenti", f"MyNotes v{VERSION} e' aggiornato!",
-                                parent=self.app.root)
+            self.app.statusBar().showMessage("Nessun aggiornamento")
+            QMessageBox.information(self.app, "Aggiornamenti",
+                                    f"MyNotes v{VERSION} e' aggiornato!")
             return
         tag, url, notes = result
         self._show_update_available(tag, url, notes)
 
     def _show_update_available(self, tag, url, notes):
-        """Dialog con 3 opzioni: Aggiorna, Salta versione, Non ricordare."""
-        dlg = tk.Toplevel(self.app.root)
-        dlg.title("Aggiornamento disponibile")
-        dlg.resizable(False, False)
-        dlg.transient(self.app.root)
-        dlg.grab_set()
+        dlg = QDialog(self.app)
+        dlg.setWindowTitle("Aggiornamento disponibile")
+        dlg.setModal(True)
+        dlg.setMinimumWidth(450)
 
-        frame = ttk.Frame(dlg, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(20, 20, 20, 20)
 
-        ttk.Label(frame, text=f"Nuova versione disponibile: {tag}",
-                  font=(UI_FONT, 12, "bold")).pack(anchor=tk.W)
-        ttk.Label(frame, text=f"Versione attuale: v{VERSION}",
-                  font=(UI_FONT, 9), foreground="#666666").pack(anchor=tk.W, pady=(2, 10))
+        title_label = QLabel(f"Nuova versione disponibile: {tag}")
+        title_label.setFont(QFont(UI_FONT, 12, QFont.Bold))
+        layout.addWidget(title_label)
+
+        ver_label = QLabel(f"Versione attuale: v{VERSION}")
+        ver_label.setStyleSheet(f"color: {FG_SECONDARY};")
+        layout.addWidget(ver_label)
 
         if notes:
-            notes_frame = ttk.LabelFrame(frame, text="Note di rilascio", padding=8)
-            notes_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
-            notes_text = tk.Text(notes_frame, wrap=tk.WORD, height=8, width=50,
-                                 font=(UI_FONT, 9))
-            notes_text.insert("1.0", notes)
-            notes_text.config(state=tk.DISABLED)
-            notes_text.pack(fill=tk.BOTH, expand=True)
+            group = QGroupBox("Note di rilascio")
+            group_layout = QVBoxLayout(group)
+            notes_text = QPlainTextEdit()
+            notes_text.setPlainText(notes)
+            notes_text.setReadOnly(True)
+            notes_text.setMaximumHeight(200)
+            group_layout.addWidget(notes_text)
+            layout.addWidget(group)
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X)
+        btn_layout = QHBoxLayout()
 
-        def on_update():
-            dlg.destroy()
-            self._do_update(url)
+        update_btn = QPushButton("Aggiorna")
+        update_btn.clicked.connect(lambda: (dlg.accept(), self._do_update(url)))
+        btn_layout.addWidget(update_btn)
 
+        skip_btn = QPushButton(f"Salta {tag}")
         def on_skip():
             settings = updater.get_update_settings()
             skipped = settings.get("skipped_versions", [])
@@ -127,80 +131,83 @@ class UpdateController:
             settings["skipped_versions"] = skipped
             updater.save_update_settings(settings)
             log.info("Versione %s aggiunta a skipped_versions", tag)
-            self.app.status_var.set(f"Versione {tag} saltata")
-            dlg.destroy()
+            self.app.statusBar().showMessage(f"Versione {tag} saltata")
+            dlg.reject()
+        skip_btn.clicked.connect(on_skip)
+        btn_layout.addWidget(skip_btn)
 
+        btn_layout.addStretch()
+
+        disable_btn = QPushButton("Non ricordare")
         def on_disable():
             settings = updater.get_update_settings()
             settings["auto_check"] = False
             updater.save_update_settings(settings)
             log.info("auto_check disabilitato dall'utente")
-            self.app.status_var.set("Notifiche aggiornamenti disabilitate")
-            dlg.destroy()
+            self.app.statusBar().showMessage("Notifiche aggiornamenti disabilitate")
+            dlg.reject()
+        disable_btn.clicked.connect(on_disable)
+        btn_layout.addWidget(disable_btn)
 
-        ttk.Button(btn_frame, text="Aggiorna", command=on_update).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(btn_frame, text=f"Salta {tag}", command=on_skip).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Non ricordare", command=on_disable).pack(side=tk.RIGHT)
-
-        # Centra il dialog sulla finestra principale
-        dlg.update_idletasks()
-        w = dlg.winfo_width()
-        h = dlg.winfo_height()
-        x = self.app.root.winfo_x() + (self.app.root.winfo_width() - w) // 2
-        y = self.app.root.winfo_y() + (self.app.root.winfo_height() - h) // 2
-        dlg.geometry(f"+{x}+{y}")
+        layout.addLayout(btn_layout)
+        dlg.exec()
 
     def _do_update(self, download_url):
         app = self.app
-        progress_win = tk.Toplevel(app.root)
-        progress_win.title("Aggiornamento")
-        progress_win.geometry("400x100")
-        progress_win.resizable(False, False)
-        progress_win.grab_set()
-        progress_win.transient(app.root)
-        frame = ttk.Frame(progress_win, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
-        status_label = ttk.Label(frame, text="Preparazione...")
-        status_label.pack(anchor=tk.W)
-        progress_bar = ttk.Progressbar(frame, mode="determinate", maximum=100)
-        progress_bar.pack(fill=tk.X, pady=(10, 0))
+
+        progress_dlg = QDialog(app)
+        progress_dlg.setWindowTitle("Aggiornamento")
+        progress_dlg.setFixedSize(400, 100)
+        progress_dlg.setModal(True)
+
+        layout = QVBoxLayout(progress_dlg)
+        layout.setContentsMargins(20, 20, 20, 20)
+        status_label = QLabel("Preparazione...")
+        layout.addWidget(status_label)
+        progress_bar = QProgressBar()
+        progress_bar.setMaximum(100)
+        layout.addWidget(progress_bar)
+        progress_dlg.show()
 
         last_error = [None]
 
         def on_progress(pct, msg):
             if pct < 0:
                 last_error[0] = msg
-            app.root.after(0, lambda: (status_label.config(text=msg),
-                                       progress_bar.__setitem__("value", max(0, pct))))
+            QTimer.singleShot(0, lambda: (
+                status_label.setText(msg),
+                progress_bar.setValue(max(0, int(pct)))
+            ))
 
         def do_download():
             success = updater.download_and_apply_update(download_url, on_progress)
             def finish():
-                progress_win.destroy()
+                progress_dlg.close()
                 if success:
                     import sys
                     is_windows = sys.platform == "win32"
                     if is_windows:
-                        # Su Windows il .bat attende la chiusura, copia e riavvia
-                        messagebox.showinfo("Completato",
-                                            "Aggiornamento scaricato!\n"
-                                            "L'app si chiudera' e verra' riavviata automaticamente.",
-                                            parent=app.root)
+                        QMessageBox.information(
+                            app, "Completato",
+                            "Aggiornamento scaricato!\n"
+                            "L'app si chiudera' e verra' riavviata automaticamente.")
                         app.notes_ctl.save_current()
-                        app.root.quit()
+                        app.close()
                     else:
-                        if messagebox.askyesno("Completato", "Aggiornamento applicato!\nRiavviare ora?",
-                                              parent=app.root):
+                        if QMessageBox.question(
+                            app, "Completato",
+                            "Aggiornamento applicato!\nRiavviare ora?"
+                        ) == QMessageBox.Yes:
                             import subprocess
                             app.notes_ctl.save_current()
                             subprocess.Popen(updater.get_restart_command())
-                            app.root.quit()
+                            app.close()
                 else:
                     body = "Aggiornamento fallito."
                     if last_error[0]:
                         body += f"\n\n{last_error[0]}"
                     body += "\n\nFile di log: data/mynotes.log"
-                    messagebox.showerror("Errore", body, parent=app.root)
-            app.root.after(0, finish)
+                    QMessageBox.critical(app, "Errore", body)
+            QTimer.singleShot(0, finish)
 
         threading.Thread(target=do_download, daemon=True).start()

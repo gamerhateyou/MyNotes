@@ -3,21 +3,21 @@
 
 import logging
 import os
+import sys
 from logging.handlers import RotatingFileHandler
-import tkinter as tk
+
 import database as db
-from gui import MyNotesApp
 
 
 def main():
-    # Console handler (DEBUG) — comportamento invariato
+    # Console handler (DEBUG)
     console = logging.StreamHandler()
     console.setLevel(logging.DEBUG)
     console.setFormatter(logging.Formatter(
         "%(asctime)s [%(name)s] %(levelname)s: %(message)s", datefmt="%H:%M:%S"
     ))
 
-    # File handler (WARNING+) — log persistente con rotazione
+    # File handler (WARNING+)
     os.makedirs(db.DATA_DIR, exist_ok=True)
     log_path = os.path.join(db.DATA_DIR, "mynotes.log")
     file_handler = RotatingFileHandler(
@@ -31,9 +31,16 @@ def main():
 
     logging.basicConfig(level=logging.DEBUG, handlers=[console, file_handler])
     db.init_db()
-    root = tk.Tk()
-    MyNotesApp(root)
-    root.mainloop()
+
+    from PySide6.QtWidgets import QApplication
+    import qdarktheme
+    from gui import MyNotesApp
+
+    app = QApplication(sys.argv)
+    app.setStyleSheet(qdarktheme.load_stylesheet("dark"))
+    window = MyNotesApp()
+    window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

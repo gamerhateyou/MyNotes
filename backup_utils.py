@@ -466,13 +466,13 @@ def do_full_backup(callback=None):
 # --- Backup Scheduler ---
 
 class BackupScheduler:
-    """Scheduler per backup automatici basato su root.after()."""
+    """Scheduler per backup automatici basato su QTimer."""
 
-    def __init__(self, root):
-        self._root = root
-        self._timer_id = None
+    def __init__(self, parent):
+        from PySide6.QtCore import QTimer
+        self._timer = QTimer(parent)
+        self._timer.timeout.connect(self._tick)
         self._interval_ms = 0
-        self._active = False
 
     def start(self):
         """Legge intervallo da settings e schedula il prossimo backup."""
@@ -482,19 +482,15 @@ class BackupScheduler:
         if minutes <= 0:
             return
         self._interval_ms = minutes * 60 * 1000
-        self._active = True
-        self._timer_id = self._root.after(self._interval_ms, self._tick)
+        self._timer.start(self._interval_ms)
         log.info("Scheduler avviato: ogni %d minuti", minutes)
 
     def stop(self):
         """Cancella il timer schedulato."""
-        self._active = False
-        if self._timer_id is not None:
-            self._root.after_cancel(self._timer_id)
-            self._timer_id = None
+        self._timer.stop()
 
     def _tick(self):
-        """Esegue backup in thread, poi rischedula."""
+        """Esegue backup in thread."""
         def _run():
             try:
                 do_local_backup()
@@ -504,10 +500,6 @@ class BackupScheduler:
                 log.info("Scheduler: backup completato")
             except Exception as e:
                 log.warning("Scheduler: backup fallito: %s", e)
-            finally:
-                # Rischedula solo se ancora attivo
-                if self._active and self._interval_ms > 0:
-                    self._timer_id = self._root.after(self._interval_ms, self._tick)
 
         threading.Thread(target=_run, daemon=True).start()
 

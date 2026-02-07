@@ -1,10 +1,15 @@
-"""Finestra dedicata per editing di una nota singola."""
+"""Finestra dedicata per editing di una nota singola (PySide6)."""
 
 import os
 import re
 import threading
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from PySide6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QToolBar,
+    QPushButton, QMenu, QLabel, QLineEdit, QSplitter, QScrollArea,
+    QFrame, QStatusBar, QMessageBox, QFileDialog, QPlainTextEdit
+)
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont, QColor, QTextCursor, QTextCharFormat, QKeySequence, QShortcut
 from datetime import datetime
 
 import database as db
@@ -13,24 +18,26 @@ import image_utils
 import platform_utils
 import audio_utils
 from gui.constants import (UI_FONT, MONO_FONT, AUTO_SAVE_MS, VERSION_SAVE_EVERY,
-                           FONT_XS, FONT_LG, FONT_XL,
+                           FONT_XS, FONT_LG, FONT_XL, FONT_SM,
                            BG_DARK, BG_SURFACE, BG_ELEVATED,
                            BORDER, FG_PRIMARY, FG_SECONDARY, FG_MUTED, FG_ON_ACCENT,
                            ACCENT, INFO, SELECT_BG, SELECT_FG)
+from gui.widgets import ChecklistEditor
 from annotator import AnnotationTool
 from dialogs import (TagManagerDialog, AttachmentDialog,
                      VersionHistoryDialog, PasswordDialog, AudioRecordDialog)
 
 
-class NoteWindow(tk.Toplevel):
+class NoteWindow(QMainWindow):
     """Finestra indipendente per editing di una nota."""
 
     def __init__(self, parent_app, note_id):
-        super().__init__(parent_app.root)
+        super().__init__(parent_app)
         self.app = parent_app
         self.note_id = note_id
+        self.setAttribute(Qt.WA_DeleteOnClose)
 
-        # Proprio stato indipendente
+        # State
         self._save_job = None
         self._image_refs = []
         self._decrypted_cache = {}
@@ -40,175 +47,179 @@ class NoteWindow(tk.Toplevel):
         self.gallery_attachments = []
         self._gallery_load_id = None
 
-        self.geometry("900x650")
-        self.minsize(700, 450)
-        self.configure(bg=BG_SURFACE)
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.resize(900, 650)
+        self.setMinimumSize(700, 450)
 
         self._build_ui()
         self._display_note()
 
-    # ─── UI ────────────────────────────────────────────────────
+    # --- UI ---
 
     def _build_ui(self):
+        central = QWidget()
+        self.setCentralWidget(central)
+        main_layout = QVBoxLayout(central)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
         # Toolbar
-        toolbar = ttk.Frame(self, style="Toolbar.TFrame", padding=5)
-        toolbar.pack(fill=tk.X)
+        toolbar = QToolBar("Toolbar")
+        toolbar.setMovable(False)
+        self.addToolBar(toolbar)
 
         # Dropdown "Nota"
-        note_mb = ttk.Menubutton(toolbar, text="Nota \u25be")
-        note_menu = tk.Menu(note_mb, tearoff=0, bg=BG_ELEVATED, fg=FG_PRIMARY,
-                            activebackground=SELECT_BG, activeforeground=SELECT_FG)
-        note_menu.add_command(label="Fissa/Sgancia", command=self.toggle_pin)
-        note_menu.add_command(label="Preferita", command=self.toggle_favorite)
-        note_menu.add_separator()
-        note_menu.add_command(label="Tag...", command=self.manage_tags)
-        note_menu.add_command(label="Allegati...", command=self.manage_attachments)
-        note_menu.add_command(label="Cronologia versioni...", command=self.show_versions)
-        note_menu.add_separator()
-        note_menu.add_command(label="Cripta nota...", command=self.encrypt_note)
-        note_menu.add_command(label="Decripta nota...", command=self.decrypt_note)
-        note_mb["menu"] = note_menu
-        note_mb.pack(side=tk.LEFT, padx=2)
+        note_btn = QPushButton("Nota \u25be")
+        note_menu = QMenu(note_btn)
+        note_menu.addAction("Fissa/Sgancia", self.toggle_pin)
+        note_menu.addAction("Preferita", self.toggle_favorite)
+        note_menu.addSeparator()
+        note_menu.addAction("Tag...", self.manage_tags)
+        note_menu.addAction("Allegati...", self.manage_attachments)
+        note_menu.addAction("Cronologia versioni...", self.show_versions)
+        note_menu.addSeparator()
+        note_menu.addAction("Cripta nota...", self.encrypt_note)
+        note_menu.addAction("Decripta nota...", self.decrypt_note)
+        note_btn.setMenu(note_menu)
+        toolbar.addWidget(note_btn)
 
         # Dropdown "Inserisci"
-        ins_mb = ttk.Menubutton(toolbar, text="Inserisci \u25be")
-        ins_menu = tk.Menu(ins_mb, tearoff=0, bg=BG_ELEVATED, fg=FG_PRIMARY,
-                           activebackground=SELECT_BG, activeforeground=SELECT_FG)
-        ins_menu.add_command(label="Screenshot intero", command=self.take_screenshot)
-        ins_menu.add_command(label="Screenshot regione", command=self.take_screenshot_region)
-        ins_menu.add_command(label="Immagine...", command=self.insert_image)
-        ins_menu.add_separator()
-        ins_menu.add_command(label="Checklist", command=self.insert_checklist)
-        ins_menu.add_separator()
-        ins_menu.add_command(label="Registra audio...", command=self.record_audio)
-        ins_menu.add_command(label="Importa audio...", command=self.import_audio)
-        ins_mb["menu"] = ins_menu
-        ins_mb.pack(side=tk.LEFT, padx=2)
+        ins_btn = QPushButton("Inserisci \u25be")
+        ins_menu = QMenu(ins_btn)
+        ins_menu.addAction("Screenshot intero", self.take_screenshot)
+        ins_menu.addAction("Screenshot regione", self.take_screenshot_region)
+        ins_menu.addAction("Immagine...", self.insert_image)
+        ins_menu.addSeparator()
+        ins_menu.addAction("Checklist", self.insert_checklist)
+        ins_menu.addSeparator()
+        ins_menu.addAction("Registra audio...", self.record_audio)
+        ins_menu.addAction("Importa audio...", self.import_audio)
+        ins_btn.setMenu(ins_menu)
+        toolbar.addWidget(ins_btn)
+
+        # Editor area
+        editor_widget = QWidget()
+        editor_layout = QVBoxLayout(editor_widget)
+        editor_layout.setContentsMargins(10, 8, 10, 10)
+        editor_layout.setSpacing(2)
 
         # Title
-        title_frame = ttk.Frame(self, padding=(10, 8))
-        title_frame.pack(fill=tk.X)
-        self.title_var = tk.StringVar()
-        self.title_entry = ttk.Entry(title_frame, textvariable=self.title_var,
-                                     font=(UI_FONT, FONT_XL, "bold"))
-        self.title_entry.pack(fill=tk.X)
-        self.title_var.trace_add("write", lambda *_: self.schedule_save())
+        self.title_entry = QLineEdit()
+        self.title_entry.setFont(QFont(UI_FONT, FONT_XL, QFont.Bold))
+        self.title_entry.setStyleSheet(
+            f"border: none; background: transparent; padding: 8px; "
+            f"font-size: {FONT_XL}pt; font-weight: bold;"
+        )
+        self.title_entry.textChanged.connect(self.schedule_save)
+        editor_layout.addWidget(self.title_entry)
 
         # Meta + Tags
-        self.meta_label = ttk.Label(self, text="", style="Meta.TLabel", padding=(12, 0))
-        self.meta_label.pack(fill=tk.X)
-        self.tags_label = ttk.Label(self, text="", style="Meta.TLabel", padding=(12, 2))
-        self.tags_label.pack(fill=tk.X)
+        self.meta_label = QLabel("")
+        self.meta_label.setStyleSheet(f"color: {FG_SECONDARY}; font-size: {FONT_SM}pt; padding: 0px 12px;")
+        editor_layout.addWidget(self.meta_label)
+        self.tags_label = QLabel("")
+        self.tags_label.setStyleSheet(f"color: {FG_SECONDARY}; font-size: {FONT_SM}pt; padding: 2px 12px;")
+        editor_layout.addWidget(self.tags_label)
 
-        # Editor + Gallery pane
-        editor_pane = ttk.PanedWindow(self, orient=tk.VERTICAL)
-        editor_pane.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 10))
+        # Editor + Gallery splitter
+        editor_splitter = QSplitter(Qt.Vertical)
+        editor_layout.addWidget(editor_splitter)
 
         # Text editor
-        text_frame = ttk.Frame(editor_pane)
-        editor_pane.add(text_frame, weight=3)
-        self.text_editor = tk.Text(
-            text_frame, font=(MONO_FONT, FONT_LG), wrap=tk.WORD,
-            undo=True, borderwidth=1, relief=tk.SOLID, padx=8, pady=8,
-            bg=BG_DARK, fg=FG_PRIMARY, insertbackground=FG_PRIMARY,
-            selectbackground=ACCENT, selectforeground=FG_ON_ACCENT,
-            highlightbackground=BORDER, highlightcolor=ACCENT
-        )
-        scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL,
-                                  command=self.text_editor.yview)
-        self.text_editor.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.text_editor.pack(fill=tk.BOTH, expand=True)
-        self.text_editor.bind("<KeyRelease>", lambda e: self.schedule_save())
-        self.text_editor.bind("<Button-1>", lambda e: self.on_text_click(e))
-
-        self.text_editor.tag_configure("checkbox_done", overstrike=True, foreground=FG_MUTED)
-        self.text_editor.tag_configure("checkbox_open", foreground=FG_PRIMARY)
-        self.text_editor.tag_configure("audio_marker", foreground=INFO, background=BG_ELEVATED)
+        self.text_editor = ChecklistEditor()
+        self.text_editor.set_app(None)  # NoteWindow manages its own clicks
+        self.text_editor.setFont(QFont(MONO_FONT, FONT_LG))
+        self.text_editor.textChanged.connect(self.schedule_save)
+        editor_splitter.addWidget(self.text_editor)
 
         # Gallery
-        gallery_frame = ttk.Frame(editor_pane)
-        editor_pane.add(gallery_frame, weight=1)
-        gallery_header = ttk.Frame(gallery_frame)
-        gallery_header.pack(fill=tk.X)
-        ttk.Label(gallery_header, text="Immagini allegate",
-                  style="ImgPanel.TLabel").pack(side=tk.LEFT, padx=5)
-        ttk.Button(gallery_header, text="Annota",
-                   command=self.annotate_selected).pack(side=tk.RIGHT, padx=2)
-        ttk.Button(gallery_header, text="Apri",
-                   command=self.open_selected).pack(side=tk.RIGHT, padx=2)
-        ttk.Button(gallery_header, text="Rimuovi",
-                   command=self.remove_selected).pack(side=tk.RIGHT, padx=2)
+        gallery_widget = QWidget()
+        gallery_layout = QVBoxLayout(gallery_widget)
+        gallery_layout.setContentsMargins(0, 0, 0, 0)
+        gallery_layout.setSpacing(2)
 
-        self.gallery_canvas = tk.Canvas(gallery_frame, height=120, bg=BG_ELEVATED,
-                                        highlightthickness=1, highlightbackground=BORDER)
-        gallery_scroll = ttk.Scrollbar(gallery_frame, orient=tk.HORIZONTAL,
-                                       command=self.gallery_canvas.xview)
-        self.gallery_canvas.configure(xscrollcommand=gallery_scroll.set)
-        gallery_scroll.pack(side=tk.BOTTOM, fill=tk.X)
-        self.gallery_canvas.pack(fill=tk.BOTH, expand=True)
-        self.gallery_inner = ttk.Frame(self.gallery_canvas)
-        self.gallery_canvas.create_window((0, 0), window=self.gallery_inner, anchor=tk.NW)
-        self.gallery_inner.bind(
-            "<Configure>",
-            lambda e: self.gallery_canvas.configure(
-                scrollregion=self.gallery_canvas.bbox("all")))
+        gallery_header = QWidget()
+        gallery_header_layout = QHBoxLayout(gallery_header)
+        gallery_header_layout.setContentsMargins(5, 2, 5, 2)
+        gallery_header_layout.addWidget(QLabel("Immagini allegate"))
+        gallery_header_layout.addStretch()
+        remove_btn = QPushButton("Rimuovi")
+        remove_btn.clicked.connect(self.remove_selected)
+        gallery_header_layout.addWidget(remove_btn)
+        open_btn = QPushButton("Apri")
+        open_btn.clicked.connect(self.open_selected)
+        gallery_header_layout.addWidget(open_btn)
+        annotate_btn = QPushButton("Annota")
+        annotate_btn.clicked.connect(self.annotate_selected)
+        gallery_header_layout.addWidget(annotate_btn)
+        gallery_layout.addWidget(gallery_header)
+
+        self.gallery_scroll = QScrollArea()
+        self.gallery_scroll.setWidgetResizable(True)
+        self.gallery_scroll.setMinimumHeight(80)
+        self.gallery_scroll.setMaximumHeight(150)
+        self.gallery_inner = QWidget()
+        self.gallery_inner_layout = QHBoxLayout(self.gallery_inner)
+        self.gallery_inner_layout.setContentsMargins(4, 4, 4, 4)
+        self.gallery_inner_layout.setSpacing(6)
+        self.gallery_inner_layout.addStretch()
+        self.gallery_scroll.setWidget(self.gallery_inner)
+        gallery_layout.addWidget(self.gallery_scroll)
+
+        editor_splitter.addWidget(gallery_widget)
+        editor_splitter.setStretchFactor(0, 3)
+        editor_splitter.setStretchFactor(1, 1)
+
+        main_layout.addWidget(editor_widget)
 
         # Status bar
-        self.status_var = tk.StringVar(value="Pronto")
-        status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN,
-                               anchor=tk.W, padding=(8, 3))
-        status_bar.configure(background=BG_SURFACE)
-        status_bar.pack(fill=tk.X, side=tk.BOTTOM)
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("Pronto")
 
-        # Keyboard shortcuts
-        self.bind("<Control-s>", lambda e: self.save_current())
-        self.bind("<Control-t>", lambda e: self.manage_tags())
-        self.bind("<Control-h>", lambda e: self.show_versions())
-        self.bind("<Control-p>", lambda e: self.toggle_pin())
-        self.bind("<Control-d>", lambda e: self.toggle_favorite())
-        self.bind("<Control-l>", lambda e: self.insert_checklist())
-        self.bind("<Control-i>", lambda e: self.insert_image())
-        self.bind("<Control-Shift-S>", lambda e: self.take_screenshot())
-        self.bind("<Control-Shift-R>", lambda e: self.take_screenshot_region())
-        self.bind("<Control-Shift-A>", lambda e: self.record_audio())
-        self.bind("<Control-w>", lambda e: self._on_close())
+        # Shortcuts
+        QShortcut(QKeySequence("Ctrl+S"), self, self.save_current)
+        QShortcut(QKeySequence("Ctrl+T"), self, self.manage_tags)
+        QShortcut(QKeySequence("Ctrl+H"), self, self.show_versions)
+        QShortcut(QKeySequence("Ctrl+P"), self, self.toggle_pin)
+        QShortcut(QKeySequence("Ctrl+D"), self, self.toggle_favorite)
+        QShortcut(QKeySequence("Ctrl+L"), self, self.insert_checklist)
+        QShortcut(QKeySequence("Ctrl+I"), self, self.insert_image)
+        QShortcut(QKeySequence("Ctrl+Shift+S"), self, self.take_screenshot)
+        QShortcut(QKeySequence("Ctrl+Shift+R"), self, self.take_screenshot_region)
+        QShortcut(QKeySequence("Ctrl+Shift+A"), self, self.record_audio)
+        QShortcut(QKeySequence("Ctrl+W"), self, self._on_close)
 
-    # ─── Display ───────────────────────────────────────────────
+    # --- Display ---
 
     def _display_note(self):
         note = db.get_note(self.note_id)
         if not note:
-            self.title("Nota non trovata")
+            self.setWindowTitle("Nota non trovata")
             return
 
-        self.title(f"{note['title']} - MyNotes")
+        self.setWindowTitle(f"{note['title']} - MyNotes")
 
-        # Title (disable trace, set, re-enable)
-        traces = self.title_var.trace_info()
-        for t in traces:
-            self.title_var.trace_remove(t[0], t[1])
-        self.title_var.set(note["title"])
-        self.title_var.trace_add("write", lambda *_: self.schedule_save())
+        self.title_entry.blockSignals(True)
+        self.title_entry.setText(note["title"])
+        self.title_entry.blockSignals(False)
 
-        # Editor content
-        self.text_editor.config(state=tk.NORMAL)
-        self.text_editor.delete("1.0", tk.END)
+        self.text_editor.setReadOnly(False)
+        self.text_editor.blockSignals(True)
+        self.text_editor.clear()
 
         if note["is_encrypted"]:
             if self.note_id in self._decrypted_cache:
-                self.text_editor.insert("1.0", self._decrypted_cache[self.note_id])
+                self.text_editor.setPlainText(self._decrypted_cache[self.note_id])
             else:
-                self.text_editor.insert("1.0",
-                                        "[Nota criptata - usa Nota > Decripta nota...]")
-                self.text_editor.config(state=tk.DISABLED)
+                self.text_editor.setPlainText("[Nota criptata - usa Nota > Decripta nota...]")
+                self.text_editor.setReadOnly(True)
         else:
-            self.text_editor.insert("1.0", note["content"] or "")
+            self.text_editor.setPlainText(note["content"] or "")
             self._apply_checklist_formatting()
             self._apply_audio_formatting()
 
-        # Meta
+        self.text_editor.blockSignals(False)
+
         created = note["created_at"][:16].replace("T", " ")
         updated = note["updated_at"][:16].replace("T", " ")
         meta = f"Creata: {created}  |  Modificata: {updated}"
@@ -218,29 +229,32 @@ class NoteWindow(tk.Toplevel):
             meta += "  |  Preferita"
         if note["is_encrypted"]:
             meta += "  |  Criptata"
-        self.meta_label.config(text=meta)
+        self.meta_label.setText(meta)
 
-        # Tags
         tags = db.get_note_tags(self.note_id)
         tag_str = ("Tag: " + ", ".join(f"#{t['name']}" for t in tags)
                    if tags else "Nessun tag")
         att_count = len(db.get_note_attachments(self.note_id))
         if att_count > 0:
             tag_str += f"  |  {att_count} allegato/i"
-        self.tags_label.config(text=tag_str)
+        self.tags_label.setText(tag_str)
 
         self._load_gallery()
 
-    # ─── Auto-save ─────────────────────────────────────────────
+    # --- Auto-save ---
 
     def schedule_save(self):
         if self._save_job:
-            self.after_cancel(self._save_job)
-        self._save_job = self.after(AUTO_SAVE_MS, self.save_current)
+            self._save_job.stop()
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(self.save_current)
+        timer.start(AUTO_SAVE_MS)
+        self._save_job = timer
 
     def save_current(self):
         self._save_job = None
-        if self.text_editor["state"] == "disabled":
+        if self.text_editor.isReadOnly():
             return
         note = db.get_note(self.note_id)
         if not note:
@@ -248,8 +262,8 @@ class NoteWindow(tk.Toplevel):
         if note["is_encrypted"] and self.note_id not in self._decrypted_cache:
             return
 
-        title = self.title_var.get().strip()
-        content = self.text_editor.get("1.0", tk.END).rstrip("\n")
+        title = self.title_entry.text().strip()
+        content = self.text_editor.toPlainText()
         if not title:
             return
 
@@ -264,97 +278,85 @@ class NoteWindow(tk.Toplevel):
         else:
             db.update_note(self.note_id, title=title, content=content)
 
-        self.title(f"{title} - MyNotes")
-        self.status_var.set("Salvato")
+        self.setWindowTitle(f"{title} - MyNotes")
+        self.status_bar.showMessage("Salvato")
 
-    # ─── Checklist / Audio formatting ──────────────────────────
+    # --- Checklist / Audio ---
 
     def _apply_checklist_formatting(self):
-        editor = self.text_editor
-        editor.tag_remove("checkbox_done", "1.0", tk.END)
-        editor.tag_remove("checkbox_open", "1.0", tk.END)
-        content = editor.get("1.0", tk.END)
-        for i, line in enumerate(content.split("\n"), 1):
-            if line.strip().startswith("[x]"):
-                editor.tag_add("checkbox_done", f"{i}.0", f"{i}.end")
-            elif line.strip().startswith("[ ]"):
-                editor.tag_add("checkbox_open", f"{i}.0", f"{i}.end")
+        doc = self.text_editor.document()
+        block = doc.begin()
+        while block.isValid():
+            text = block.text().strip()
+            cursor = QTextCursor(block)
+            cursor.movePosition(QTextCursor.StartOfBlock)
+            cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+            fmt = QTextCharFormat()
+            if text.startswith("[x]"):
+                fmt.setFontStrikeOut(True)
+                fmt.setForeground(QColor(FG_MUTED))
+            elif text.startswith("[ ]"):
+                fmt.setFontStrikeOut(False)
+                fmt.setForeground(QColor(FG_PRIMARY))
+            else:
+                fmt.setFontStrikeOut(False)
+                fmt.setForeground(QColor(FG_PRIMARY))
+            cursor.mergeCharFormat(fmt)
+            block = block.next()
 
     def _apply_audio_formatting(self):
-        editor = self.text_editor
-        editor.tag_remove("audio_marker", "1.0", tk.END)
-        content = editor.get("1.0", tk.END)
+        doc = self.text_editor.document()
         pattern = re.compile(r"\[♪:[^\]]+\]")
-        for i, line in enumerate(content.split("\n"), 1):
-            for m in pattern.finditer(line):
-                editor.tag_add("audio_marker", f"{i}.{m.start()}", f"{i}.{m.end()}")
+        block = doc.begin()
+        while block.isValid():
+            for m in pattern.finditer(block.text()):
+                cursor = QTextCursor(block)
+                cursor.movePosition(QTextCursor.StartOfBlock)
+                cursor.movePosition(QTextCursor.Right, QTextCursor.MoveAnchor, m.start())
+                cursor.movePosition(QTextCursor.Right, QTextCursor.KeepAnchor, m.end() - m.start())
+                fmt = QTextCharFormat()
+                fmt.setForeground(QColor(INFO))
+                fmt.setBackground(QColor(BG_ELEVATED))
+                cursor.mergeCharFormat(fmt)
+            block = block.next()
 
     def insert_checklist(self):
-        self.text_editor.insert(tk.INSERT,
-                                "\n[ ] Elemento da fare\n[ ] Altro elemento\n"
-                                "[x] Elemento completato\n")
+        cursor = self.text_editor.textCursor()
+        cursor.insertText("\n[ ] Elemento da fare\n[ ] Altro elemento\n[x] Elemento completato\n")
         self._apply_checklist_formatting()
 
     def _insert_audio_marker(self, att_filename, description):
         desc = description or "audio"
         marker = f"\n[♪:{att_filename} {desc}]\n"
-        self.text_editor.insert(tk.INSERT, marker)
+        cursor = self.text_editor.textCursor()
+        cursor.insertText(marker)
         self._apply_audio_formatting()
         self._apply_checklist_formatting()
         self.schedule_save()
 
-    def on_text_click(self, event):
-        editor = self.text_editor
-        index = editor.index(f"@{event.x},{event.y}")
-        line_num = int(index.split(".")[0])
-        line = editor.get(f"{line_num}.0", f"{line_num}.end")
-        stripped = line.lstrip()
-
-        # Audio marker click
-        audio_match = re.search(r"\[♪:(\S+)", line)
-        if audio_match:
-            col = int(index.split(".")[1])
-            marker_match = re.search(r"\[♪:[^\]]+\]", line)
-            if marker_match and marker_match.start() <= col <= marker_match.end():
-                filename = audio_match.group(1)
-                path = os.path.join(db.ATTACHMENTS_DIR, filename)
-                if os.path.exists(path):
-                    platform_utils.open_file(path)
-                else:
-                    messagebox.showwarning("Audio", f"File non trovato:\n{filename}",
-                                           parent=self)
-                return
-
-        if stripped.startswith("[ ]"):
-            offset = len(line) - len(stripped)
-            editor.delete(f"{line_num}.{offset}", f"{line_num}.{offset + 3}")
-            editor.insert(f"{line_num}.{offset}", "[x]")
-            self._apply_checklist_formatting()
-            self.schedule_save()
-        elif stripped.startswith("[x]"):
-            offset = len(line) - len(stripped)
-            editor.delete(f"{line_num}.{offset}", f"{line_num}.{offset + 3}")
-            editor.insert(f"{line_num}.{offset}", "[ ]")
-            self._apply_checklist_formatting()
-            self.schedule_save()
-
-    # ─── Gallery ───────────────────────────────────────────────
+    # --- Gallery ---
 
     def _load_gallery(self):
         self._image_refs.clear()
-        for w in self.gallery_inner.winfo_children():
-            w.destroy()
         self.gallery_labels.clear()
         self.selected_image_index = None
         self._gallery_load_id = self.note_id
+
+        layout = self.gallery_inner_layout
+        while layout.count() > 0:
+            child = layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
 
         attachments = db.get_note_attachments(self.note_id)
         self.gallery_attachments = [
             a for a in attachments if image_utils.is_image_file(a["original_name"])]
 
         if not self.gallery_attachments:
-            ttk.Label(self.gallery_inner, text="Nessuna immagine",
-                      style="ImgPanel.TLabel").pack(side=tk.LEFT, padx=20, pady=20)
+            no_img = QLabel("Nessuna immagine")
+            no_img.setStyleSheet(f"color: {FG_SECONDARY}; padding: 20px;")
+            layout.addWidget(no_img)
+            layout.addStretch()
             return
 
         items = []
@@ -363,17 +365,32 @@ class NoteWindow(tk.Toplevel):
             if not os.path.exists(path):
                 items.append((i, att, path, None))
                 continue
-            frame = tk.Frame(self.gallery_inner, bg=BG_ELEVATED, padx=4, pady=4)
-            frame.pack(side=tk.LEFT, padx=3, pady=3)
-            lbl = tk.Label(frame, text="...", width=12, height=5, bg=BG_SURFACE,
-                           cursor="hand2", borderwidth=2, relief=tk.FLAT)
-            lbl.pack()
-            tk.Label(frame, text=att["original_name"][:15], bg=BG_ELEVATED,
-                     font=(UI_FONT, FONT_XS), fg=FG_SECONDARY).pack()
-            lbl.bind("<Button-1>", lambda e, idx=i, l=lbl: self._select_image(idx, l))
-            lbl.bind("<Double-Button-1>", lambda e, idx=i: self._open_image(idx))
+
+            frame = QFrame()
+            frame.setStyleSheet(f"background-color: {BG_ELEVATED}; padding: 4px;")
+            frame_layout = QVBoxLayout(frame)
+            frame_layout.setContentsMargins(4, 4, 4, 4)
+            frame_layout.setSpacing(2)
+
+            lbl = QLabel("...")
+            lbl.setFixedSize(100, 80)
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet(f"background-color: {BG_SURFACE}; border: 2px solid transparent;")
+            lbl.setCursor(Qt.PointingHandCursor)
+            lbl.mousePressEvent = lambda e, idx=i, l=lbl: self._on_gallery_click(e, idx, l)
+            lbl.mouseDoubleClickEvent = lambda e, idx=i: self._open_image(idx)
+            frame_layout.addWidget(lbl)
+
+            name_label = QLabel(att["original_name"][:15])
+            name_label.setStyleSheet(f"color: {FG_SECONDARY}; font-size: {FONT_XS}pt;")
+            name_label.setAlignment(Qt.AlignCenter)
+            frame_layout.addWidget(name_label)
+
+            layout.addWidget(frame)
             self.gallery_labels.append(lbl)
             items.append((i, att, path, lbl))
+
+        layout.addStretch()
 
         def _load_thumbs():
             for i, att, path, lbl in items:
@@ -382,22 +399,25 @@ class NoteWindow(tk.Toplevel):
                 if lbl is None:
                     continue
                 try:
-                    photo = image_utils.load_image_as_photo(path, max_width=100,
-                                                            max_height=100)
-                    self.after(0, lambda p=photo, l=lbl: self._set_thumb(p, l))
+                    pixmap = image_utils.load_image_as_pixmap(path, max_width=100, max_height=80)
+                    QTimer.singleShot(0, lambda p=pixmap, l=lbl: self._set_thumb(p, l))
                 except Exception:
                     continue
 
         threading.Thread(target=_load_thumbs, daemon=True).start()
 
-    def _set_thumb(self, photo, label):
-        self._image_refs.append(photo)
-        label.config(image=photo, text="", width=0, height=0)
+    def _set_thumb(self, pixmap, label):
+        self._image_refs.append(pixmap)
+        label.setPixmap(pixmap)
+        label.setFixedSize(pixmap.width() + 4, pixmap.height() + 4)
+
+    def _on_gallery_click(self, event, index, label):
+        self._select_image(index, label)
 
     def _select_image(self, index, label):
         for lbl in self.gallery_labels:
-            lbl.config(relief=tk.FLAT)
-        label.config(relief=tk.SOLID)
+            lbl.setStyleSheet(f"background-color: {BG_SURFACE}; border: 2px solid transparent;")
+        label.setStyleSheet(f"background-color: {BG_SURFACE}; border: 2px solid {BORDER};")
         self.selected_image_index = index
 
     def _open_image(self, index):
@@ -412,15 +432,16 @@ class NoteWindow(tk.Toplevel):
         if self.selected_image_index is None:
             return
         att = self.gallery_attachments[self.selected_image_index]
-        if messagebox.askyesno("Conferma", f"Rimuovere '{att['original_name']}'?",
-                               parent=self):
+        if QMessageBox.question(
+            self, "Conferma",
+            f"Rimuovere '{att['original_name']}'?"
+        ) == QMessageBox.Yes:
             db.delete_attachment(att["id"])
             self._display_note()
 
     def annotate_selected(self):
         if self.selected_image_index is None:
-            messagebox.showinfo("Info", "Seleziona un'immagine dalla galleria.",
-                                parent=self)
+            QMessageBox.information(self, "Info", "Seleziona un'immagine dalla galleria.")
             return
         att = self.gallery_attachments[self.selected_image_index]
         path = os.path.join(db.ATTACHMENTS_DIR, att["filename"])
@@ -432,15 +453,15 @@ class NoteWindow(tk.Toplevel):
             os.remove(tool.result_path)
             self._display_note()
 
-    # ─── Media ─────────────────────────────────────────────────
+    # --- Media ---
 
     def take_screenshot(self):
-        self.withdraw()
-        self.after(500, lambda: self._do_screenshot(full=True))
+        self.hide()
+        QTimer.singleShot(500, lambda: self._do_screenshot(full=True))
 
     def take_screenshot_region(self):
-        self.withdraw()
-        self.after(500, lambda: self._do_screenshot(full=False))
+        self.hide()
+        QTimer.singleShot(500, lambda: self._do_screenshot(full=False))
 
     def _do_screenshot(self, full=True):
         import uuid
@@ -451,7 +472,7 @@ class NoteWindow(tk.Toplevel):
                        else platform_utils.take_screenshot_region(save_path))
         except Exception:
             success = False
-        self.deiconify()
+        self.show()
         if success and os.path.exists(save_path):
             now = datetime.now().isoformat()
             with db._connect() as conn:
@@ -461,22 +482,21 @@ class NoteWindow(tk.Toplevel):
                     (self.note_id, filename, filename, now))
                 conn.commit()
             self._display_note()
-            self.status_var.set("Screenshot catturato!")
+            self.status_bar.showMessage("Screenshot catturato!")
         else:
             msg = "Impossibile catturare lo screenshot.\n"
             if platform_utils.IS_LINUX:
                 msg += "Installa: sudo dnf install grim slurp"
-            messagebox.showwarning("Screenshot", msg, parent=self)
+            QMessageBox.warning(self, "Screenshot", msg)
 
     def insert_image(self):
-        path = filedialog.askopenfilename(
-            parent=self, title="Seleziona immagine",
-            filetypes=[("Immagini", "*.png *.jpg *.jpeg *.gif *.bmp *.tiff *.webp"),
-                       ("Tutti", "*.*")])
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Seleziona immagine",
+            "", "Immagini (*.png *.jpg *.jpeg *.gif *.bmp *.tiff *.webp);;Tutti (*.*)")
         if path:
             db.add_attachment(self.note_id, path)
             self._display_note()
-            self.status_var.set("Immagine aggiunta")
+            self.status_bar.showMessage("Immagine aggiunta")
 
     def record_audio(self):
         dlg = AudioRecordDialog(self, mode="record")
@@ -491,13 +511,12 @@ class NoteWindow(tk.Toplevel):
             pass
         self._insert_audio_marker(att_filename, description)
         self._display_note()
-        self.status_var.set("Audio registrato")
+        self.status_bar.showMessage("Audio registrato")
 
     def import_audio(self):
-        path = filedialog.askopenfilename(
-            parent=self, title="Seleziona file audio",
-            filetypes=[("Audio", "*.mp3 *.wav *.ogg *.m4a *.flac *.aac *.wma"),
-                       ("Tutti", "*.*")])
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Seleziona file audio",
+            "", "Audio (*.mp3 *.wav *.ogg *.m4a *.flac *.aac *.wma);;Tutti (*.*)")
         if not path:
             return
         dlg = AudioRecordDialog(self, mode="describe", audio_path=path)
@@ -507,9 +526,9 @@ class NoteWindow(tk.Toplevel):
         att_filename = db.add_attachment(self.note_id, path)
         self._insert_audio_marker(att_filename, description)
         self._display_note()
-        self.status_var.set("Audio importato")
+        self.status_bar.showMessage("Audio importato")
 
-    # ─── Note Actions ──────────────────────────────────────────
+    # --- Note Actions ---
 
     def toggle_pin(self):
         db.toggle_pin(self.note_id)
@@ -535,11 +554,10 @@ class NoteWindow(tk.Toplevel):
         if not note:
             return
         if note["is_encrypted"]:
-            messagebox.showinfo("Info",
-                                "La cronologia versioni non e' disponibile per le note criptate.",
-                                parent=self)
+            QMessageBox.information(self, "Info",
+                                    "La cronologia versioni non e' disponibile per le note criptate.")
             return
-        content = self.text_editor.get("1.0", tk.END).rstrip("\n")
+        content = self.text_editor.toPlainText()
         db.save_version(self.note_id, note["title"], content)
         dlg = VersionHistoryDialog(self, self.note_id)
         if dlg.result:
@@ -550,49 +568,56 @@ class NoteWindow(tk.Toplevel):
         if not note:
             return
         if note["is_encrypted"]:
-            messagebox.showinfo("Info", "La nota e' gia' criptata.", parent=self)
+            QMessageBox.information(self, "Info", "La nota e' gia' criptata.")
             return
         dlg = PasswordDialog(self, title="Cripta nota", confirm=True)
         if dlg.result:
-            content = self.text_editor.get("1.0", tk.END).rstrip("\n")
+            content = self.text_editor.toPlainText()
             encrypted = crypto_utils.encrypt(content, dlg.result)
             db.set_note_encrypted(self.note_id, encrypted, True)
             db.delete_note_versions(self.note_id)
             self._decrypted_cache.pop(self.note_id, None)
             self._display_note()
-            self.status_var.set("Nota criptata")
+            self.status_bar.showMessage("Nota criptata")
 
     def decrypt_note(self):
         note = db.get_note(self.note_id)
         if not note:
             return
         if not note["is_encrypted"]:
-            messagebox.showinfo("Info", "La nota non e' criptata.", parent=self)
+            QMessageBox.information(self, "Info", "La nota non e' criptata.")
             return
         dlg = PasswordDialog(self, title="Decripta nota")
         if dlg.result:
             decrypted = crypto_utils.decrypt(note["content"], dlg.result)
             if decrypted is None:
-                messagebox.showerror("Errore", "Password errata.", parent=self)
+                QMessageBox.critical(self, "Errore", "Password errata.")
                 return
-            action = messagebox.askyesnocancel(
-                "Decripta",
+            btn = QMessageBox.question(
+                self, "Decripta",
                 "Nota decriptata!\n\nSi = Rimuovi crittografia permanentemente\n"
                 "No = Visualizza solo (resta criptata)\nAnnulla = Chiudi",
-                parent=self)
-            if action is True:
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+                QMessageBox.Cancel)
+            if btn == QMessageBox.Yes:
                 db.set_note_encrypted(self.note_id, decrypted, False)
                 self._decrypted_cache.pop(self.note_id, None)
-            elif action is False:
+            elif btn == QMessageBox.No:
                 self._decrypted_cache[self.note_id] = decrypted
             else:
                 return
             self._display_note()
 
-    # ─── Lifecycle ─────────────────────────────────────────────
+    # --- Lifecycle ---
 
     def _on_close(self):
         self.save_current()
         self.app._detached_windows.pop(self.note_id, None)
         self.app.notes_ctl.load_notes()
-        self.destroy()
+        self.close()
+
+    def closeEvent(self, event):
+        self.save_current()
+        self.app._detached_windows.pop(self.note_id, None)
+        self.app.notes_ctl.load_notes()
+        event.accept()

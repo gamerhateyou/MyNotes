@@ -1,17 +1,18 @@
-"""MyNotes GUI - Main application controller."""
+"""MyNotes GUI - Main application window (PySide6)."""
 
 import logging
-import tkinter as tk
-from tkinter import ttk
+from PySide6.QtWidgets import QMainWindow, QApplication
+from PySide6.QtCore import QTimer
+
 import database as db
 import backup_utils
 from version import VERSION
 
 from gui.constants import (UI_FONT, MONO_FONT, FONT_SM, FONT_BASE, FONT_XL,
-                          BG_DARK, BG_SURFACE, BG_ELEVATED,
-                          BORDER, BORDER_LIGHT,
-                          FG_PRIMARY, FG_SECONDARY, FG_MUTED, FG_ON_ACCENT,
-                          ACCENT, WARNING, SELECT_BG, SELECT_FG)
+                           BG_DARK, BG_SURFACE, BG_ELEVATED,
+                           BORDER, BORDER_LIGHT,
+                           FG_PRIMARY, FG_SECONDARY, FG_MUTED, FG_ON_ACCENT,
+                           ACCENT, WARNING, SELECT_BG, SELECT_FG)
 from gui.menu import build_menu
 from gui.layout import build_toolbar, build_main_layout
 from gui.note_controller import NoteController
@@ -23,12 +24,12 @@ from gui.update_controller import UpdateController
 log = logging.getLogger("app")
 
 
-class MyNotesApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title(f"MyNotes v{VERSION}")
-        self.root.geometry("1200x750")
-        self.root.minsize(900, 550)
+class MyNotesApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle(f"MyNotes v{VERSION}")
+        self.resize(1200, 750)
+        self.setMinimumSize(900, 550)
 
         # State
         self.current_note_id = None
@@ -42,8 +43,10 @@ class MyNotesApp:
         self._decrypted_cache = {}
         self._detached_windows = {}
 
+        # Apply custom QSS on top of qdarktheme
+        self._apply_qss()
+
         # Build UI
-        self._setup_styles()
         build_menu(self)
         build_toolbar(self)
         build_main_layout(self)
@@ -56,23 +59,22 @@ class MyNotesApp:
         self.update_ctl = UpdateController(self)
 
         # Backup scheduler
-        self._backup_scheduler = backup_utils.BackupScheduler(self.root)
+        self._backup_scheduler = backup_utils.BackupScheduler(self)
         self._backup_scheduler.start()
 
         # Load data
         self.notes_ctl.load_categories()
         self.notes_ctl.load_notes()
 
-        self.root.after(2000, self.update_ctl.check_silent)
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        QTimer.singleShot(2000, self.update_ctl.check_silent)
 
     def open_in_window(self, note_id):
         if note_id is None:
             return
         if note_id in self._detached_windows:
             win = self._detached_windows[note_id]
-            win.lift()
-            win.focus_force()
+            win.raise_()
+            win.activateWindow()
             return
         self.notes_ctl.save_current()
         if self.current_note_id == note_id:
@@ -80,8 +82,9 @@ class MyNotesApp:
         from gui.note_window import NoteWindow
         win = NoteWindow(self, note_id)
         self._detached_windows[note_id] = win
+        win.show()
 
-    def _on_close(self):
+    def closeEvent(self, event):
         for win in list(self._detached_windows.values()):
             win._on_close()
         self.notes_ctl.save_current()
@@ -92,101 +95,99 @@ class MyNotesApp:
                 backup_utils.do_local_backup()
             except Exception as e:
                 log.warning("Auto-backup alla chiusura fallito: %s", e)
-        self.root.quit()
+        event.accept()
 
-    def _setup_styles(self):
-        self.root.configure(bg=BG_DARK)
-
-        style = ttk.Style()
-        style.theme_use("clam")
-
-        # Base widget styles
-        style.configure(".", background=BG_SURFACE, foreground=FG_PRIMARY,
-                        bordercolor=BORDER, troughcolor=BG_DARK,
-                        fieldbackground=BG_ELEVATED, font=(UI_FONT, FONT_BASE))
-        style.map(".", background=[("active", BG_ELEVATED)],
-                  foreground=[("disabled", FG_MUTED)])
-
-        # Frames
-        style.configure("TFrame", background=BG_SURFACE)
-        style.configure("Toolbar.TFrame", background=BG_SURFACE)
-
-        # Labels
-        style.configure("TLabel", background=BG_SURFACE, foreground=FG_PRIMARY)
-        style.configure("Title.TLabel", font=(UI_FONT, FONT_XL, "bold"))
-        style.configure("Meta.TLabel", font=(UI_FONT, FONT_SM), foreground=FG_SECONDARY)
-        style.configure("ImgPanel.TLabel", font=(UI_FONT, FONT_SM), foreground=FG_SECONDARY)
-        style.configure("Pin.TLabel", font=(UI_FONT, FONT_BASE), foreground=WARNING)
-
-        # Buttons
-        style.configure("TButton", background=BG_ELEVATED, foreground=FG_PRIMARY,
-                        bordercolor=BORDER, padding=(8, 4))
-        style.map("TButton",
-                  background=[("active", BORDER_LIGHT), ("pressed", BORDER)],
-                  bordercolor=[("focus", ACCENT)])
-
-        # Entry
-        style.configure("TEntry", fieldbackground=BG_ELEVATED, foreground=FG_PRIMARY,
-                        insertcolor=FG_PRIMARY, bordercolor=BORDER, padding=4)
-        style.map("TEntry", bordercolor=[("focus", ACCENT)],
-                  fieldbackground=[("readonly", BG_SURFACE)])
-
-        # Combobox
-        style.configure("TCombobox", fieldbackground=BG_ELEVATED, foreground=FG_PRIMARY,
-                        background=BG_ELEVATED, bordercolor=BORDER,
-                        arrowcolor=FG_SECONDARY, padding=4)
-        style.map("TCombobox",
-                  fieldbackground=[("readonly", BG_ELEVATED)],
-                  foreground=[("readonly", FG_PRIMARY)],
-                  bordercolor=[("focus", ACCENT)],
-                  selectbackground=[("readonly", SELECT_BG)],
-                  selectforeground=[("readonly", SELECT_FG)])
-        # Combobox dropdown listbox
-        self.root.option_add("*TCombobox*Listbox.background", BG_ELEVATED)
-        self.root.option_add("*TCombobox*Listbox.foreground", FG_PRIMARY)
-        self.root.option_add("*TCombobox*Listbox.selectBackground", SELECT_BG)
-        self.root.option_add("*TCombobox*Listbox.selectForeground", SELECT_FG)
-
-        # Scrollbar
-        style.configure("Vertical.TScrollbar", background=BORDER,
-                        troughcolor=BG_DARK, bordercolor=BG_DARK,
-                        arrowcolor=FG_SECONDARY)
-        style.configure("Horizontal.TScrollbar", background=BORDER,
-                        troughcolor=BG_DARK, bordercolor=BG_DARK,
-                        arrowcolor=FG_SECONDARY)
-
-        # PanedWindow
-        style.configure("TPanedwindow", background=BG_SURFACE)
-        style.configure("Sash", sashthickness=4, gripcount=0,
-                        background=BORDER_LIGHT)
-
-        # Checkbutton / Radiobutton
-        style.configure("TCheckbutton", background=BG_SURFACE, foreground=FG_PRIMARY,
-                        indicatorcolor=BG_ELEVATED, indicatorbackground=BG_ELEVATED)
-        style.map("TCheckbutton",
-                  indicatorcolor=[("selected", ACCENT)],
-                  background=[("active", BG_SURFACE)])
-        style.configure("TRadiobutton", background=BG_SURFACE, foreground=FG_PRIMARY)
-        style.map("TRadiobutton", background=[("active", BG_SURFACE)])
-
-        # Separator
-        style.configure("TSeparator", background=BORDER)
-
-        # LabelFrame
-        style.configure("TLabelframe", background=BG_SURFACE, foreground=FG_SECONDARY,
-                        bordercolor=BORDER)
-        style.configure("TLabelframe.Label", background=BG_SURFACE, foreground=FG_SECONDARY)
-
-        # Spinbox
-        style.configure("TSpinbox", fieldbackground=BG_ELEVATED, foreground=FG_PRIMARY,
-                        bordercolor=BORDER, arrowcolor=FG_SECONDARY)
-
-        # Progressbar
-        style.configure("TProgressbar", troughcolor=BG_DARK, background=ACCENT,
-                        bordercolor=BORDER)
-
-        # Menubutton
-        style.configure("TMenubutton", background=BG_ELEVATED, foreground=FG_PRIMARY,
-                        bordercolor=BORDER, padding=(8, 4))
-        style.map("TMenubutton",
-                  background=[("active", BORDER_LIGHT)])
+    def _apply_qss(self):
+        self.setStyleSheet(f"""
+            QMainWindow {{
+                background-color: {BG_DARK};
+            }}
+            QListWidget {{
+                background-color: {BG_ELEVATED};
+                color: {FG_PRIMARY};
+                border: 1px solid {BORDER};
+                font-size: {FONT_BASE}pt;
+            }}
+            QListWidget::item:selected {{
+                background-color: {SELECT_BG};
+                color: {SELECT_FG};
+            }}
+            QPlainTextEdit {{
+                background-color: {BG_DARK};
+                color: {FG_PRIMARY};
+                border: 1px solid {BORDER};
+                font-family: "{MONO_FONT}";
+                font-size: {FONT_BASE + 1}pt;
+                padding: 8px;
+            }}
+            QLineEdit {{
+                background-color: {BG_ELEVATED};
+                color: {FG_PRIMARY};
+                border: 1px solid {BORDER};
+                padding: 4px;
+            }}
+            QLineEdit:focus {{
+                border-color: {ACCENT};
+            }}
+            QComboBox {{
+                background-color: {BG_ELEVATED};
+                color: {FG_PRIMARY};
+                border: 1px solid {BORDER};
+                padding: 4px;
+            }}
+            QSplitter::handle {{
+                background-color: {BORDER_LIGHT};
+            }}
+            QSplitter::handle:horizontal {{
+                width: 4px;
+            }}
+            QSplitter::handle:vertical {{
+                height: 4px;
+            }}
+            QToolBar {{
+                background-color: {BG_SURFACE};
+                border-bottom: 1px solid {BORDER};
+                spacing: 4px;
+                padding: 4px;
+            }}
+            QMenuBar {{
+                background-color: {BG_SURFACE};
+                color: {FG_PRIMARY};
+            }}
+            QMenuBar::item:selected {{
+                background-color: {SELECT_BG};
+            }}
+            QMenu {{
+                background-color: {BG_ELEVATED};
+                color: {FG_PRIMARY};
+                border: 1px solid {BORDER};
+            }}
+            QMenu::item:selected {{
+                background-color: {SELECT_BG};
+                color: {SELECT_FG};
+            }}
+            QStatusBar {{
+                background-color: {BG_SURFACE};
+                color: {FG_SECONDARY};
+            }}
+            QScrollArea {{
+                background-color: {BG_ELEVATED};
+                border: 1px solid {BORDER};
+            }}
+            QPushButton {{
+                background-color: {BG_ELEVATED};
+                color: {FG_PRIMARY};
+                border: 1px solid {BORDER};
+                padding: 4px 12px;
+                border-radius: 3px;
+            }}
+            QPushButton:hover {{
+                background-color: {BORDER_LIGHT};
+            }}
+            QPushButton:pressed {{
+                background-color: {BORDER};
+            }}
+            QLabel {{
+                color: {FG_PRIMARY};
+            }}
+        """)
