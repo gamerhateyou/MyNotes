@@ -46,6 +46,7 @@ class NoteWindow(QMainWindow):
         self.selected_image_index = None
         self.gallery_attachments = []
         self._gallery_load_id = None
+        self.notes_ctl = self  # Proxy so ChecklistEditor can call notes_ctl methods
 
         self.resize(900, 650)
         self.setMinimumSize(700, 450)
@@ -126,7 +127,7 @@ class NoteWindow(QMainWindow):
 
         # Text editor
         self.text_editor = ChecklistEditor()
-        self.text_editor.set_app(None)  # NoteWindow manages its own clicks
+        self.text_editor.set_app(self)
         self.text_editor.setFont(QFont(MONO_FONT, FONT_LG))
         self.text_editor.textChanged.connect(self.schedule_save)
         editor_splitter.addWidget(self.text_editor)

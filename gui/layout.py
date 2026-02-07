@@ -104,7 +104,6 @@ def build_main_layout(app):
     app.cat_listbox.setContextMenuPolicy(Qt.CustomContextMenu)
     app.cat_listbox.customContextMenuRequested.connect(
         lambda pos: app.notes_ctl.show_category_context_menu(pos))
-    sidebar_layout.addWidget(cat_header)
     sidebar_layout.addWidget(app.cat_listbox)
 
     sidebar.setMinimumWidth(160)
