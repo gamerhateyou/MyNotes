@@ -20,6 +20,7 @@ from dialogs import (CategoryDialog, NoteDialog, TagManagerDialog, AttachmentDia
 class NoteController:
     def __init__(self, app):
         self.app = app
+        self._displaying = False  # reentrancy guard
         self.app.text_editor.set_app(app)
         # Connect drag-and-drop signal from category list
         self.app.cat_listbox.notes_dropped.connect(self._on_notes_dropped)
@@ -100,9 +101,8 @@ class NoteController:
         app.list_header.setText(f"{header} ({len(app.notes)})")
         app.statusBar().showMessage(f"{len(app.notes)} nota/e")
 
+        target_row = 0
         if app.notes:
-            # Try to restore previous selection
-            target_row = 0
             if prev_note_id is not None:
                 for i, note in enumerate(app.notes):
                     if note["id"] == prev_note_id:
@@ -112,7 +112,7 @@ class NoteController:
         app.note_listbox.blockSignals(False)
 
         if app.notes:
-            self.on_note_select()
+            self.display_note(app.notes[target_row]["id"])
         else:
             self._clear_editor()
 
@@ -147,6 +147,8 @@ class NoteController:
         self.load_notes()
 
     def on_note_select(self):
+        if self._displaying:
+            return
         items = self.app.note_listbox.selectedItems()
         if not items:
             return
@@ -221,8 +223,18 @@ class NoteController:
 
     def display_note(self, note_id):
         app = self.app
+        if self._displaying:
+            return
         if note_id in app._detached_windows:
             return
+        self._displaying = True
+        try:
+            self._display_note_inner(note_id)
+        finally:
+            self._displaying = False
+
+    def _display_note_inner(self, note_id):
+        app = self.app
         self.save_current()
         app.current_note_id = note_id
         # Clear decrypted cache for previous note
@@ -340,7 +352,8 @@ class NoteController:
         else:
             db.update_note(app.current_note_id, title=title, content=content)
 
-        # Update list item text
+        # Update list item text (block signals to prevent cascade)
+        app.note_listbox.blockSignals(True)
         items = app.note_listbox.findItems("*", Qt.MatchWildcard)
         for item in items:
             if item.data(Qt.UserRole) == app.current_note_id:
@@ -354,6 +367,7 @@ class NoteController:
                     prefix += "[E] "
                 item.setText(f"{prefix}{title}  [{date_str}]")
                 break
+        app.note_listbox.blockSignals(False)
 
         app.statusBar().showMessage("Salvato")
 
