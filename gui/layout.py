@@ -19,6 +19,8 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QStatusBar,
     QStyle,
+    QTabWidget,
+    QTextBrowser,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -196,14 +198,25 @@ def build_main_layout(app: MyNotesApp) -> None:
     # QStackedWidget for editor / decrypt overlay
     app.editor_stack = QStackedWidget()
 
-    # Page 0: text editor
+    # Page 0: tab widget (Modifica + Preview)
     from gui.widgets import ChecklistEditor
+
+    app.editor_tabs = QTabWidget()
+    app.editor_tabs.setTabPosition(QTabWidget.TabPosition.South)
 
     app.text_editor = ChecklistEditor()
     app.text_editor.setFont(QFont(MONO_FONT, FONT_LG))
     app.text_editor.setPlaceholderText("Scrivi qui...")
     app.text_editor.textChanged.connect(lambda: app.notes_ctl.schedule_save())
-    app.editor_stack.addWidget(app.text_editor)
+    app.editor_tabs.addTab(app.text_editor, "Modifica")
+
+    app.preview_browser = QTextBrowser()
+    app.preview_browser.setOpenExternalLinks(True)
+    app.editor_tabs.addTab(app.preview_browser, "Preview")
+
+    app.editor_tabs.currentChanged.connect(lambda idx: app.notes_ctl.update_preview() if idx == 1 else None)
+
+    app.editor_stack.addWidget(app.editor_tabs)
 
     # Page 1: decrypt overlay
     encrypt_overlay = QWidget()

@@ -17,6 +17,8 @@ if TYPE_CHECKING:
         QPushButton,
         QScrollArea,
         QStackedWidget,
+        QTabWidget,
+        QTextBrowser,
         QWidget,
     )
 
@@ -85,6 +87,8 @@ class MyNotesApp(QMainWindow):
         self.list_header: QLabel
         self.title_entry: QLineEdit
         self.text_editor: ChecklistEditor
+        self.editor_tabs: QTabWidget
+        self.preview_browser: QTextBrowser
         self.meta_label: QLabel
         self.tags_label: QLabel
         self.editor_stack: QStackedWidget
@@ -272,6 +276,30 @@ class MyNotesApp(QMainWindow):
                 width: 10px;
             }}
             QLabel {{
+                color: {FG_PRIMARY};
+            }}
+            QTextBrowser {{
+                background-color: {BG_DARK};
+                color: {FG_PRIMARY};
+                border: none;
+                padding: 16px;
+                font-size: {FONT_BASE + 1}pt;
+            }}
+            QTabWidget::pane {{
+                border: none;
+            }}
+            QTabBar::tab {{
+                background-color: {BG_SURFACE};
+                color: {FG_SECONDARY};
+                padding: 4px 16px;
+                border: none;
+                border-bottom: 2px solid transparent;
+            }}
+            QTabBar::tab:selected {{
+                color: {FG_PRIMARY};
+                border-bottom: 2px solid {ACCENT};
+            }}
+            QTabBar::tab:hover {{
                 color: {FG_PRIMARY};
             }}
         """)

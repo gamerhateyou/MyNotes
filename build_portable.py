@@ -279,6 +279,9 @@ def build() -> None:
         "zipfile",
         "--hidden-import",
         "wave",
+        # Markdown preview
+        "--hidden-import",
+        "markdown",
         # PDF export
         "--hidden-import",
         "reportlab",

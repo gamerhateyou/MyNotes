@@ -38,6 +38,8 @@ module = [
     "PIL",
     "PIL.*",
     "certifi",
+    "markdown",
+    "markdown.*",
     "PyInstaller",
 ]
 ignore_missing_imports = true

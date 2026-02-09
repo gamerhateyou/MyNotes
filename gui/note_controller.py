@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QPoint, Qt, QTimer
@@ -17,7 +16,11 @@ import crypto_utils
 from dialogs import AttachmentDialog, CategoryDialog, NoteDialog, PasswordDialog, TagManagerDialog, VersionHistoryDialog
 from gui.constants import (
     AUTO_SAVE_MS,
+    BG_DARK,
     DANGER,
+    FG_PRIMARY,
+    FONT_BASE,
+    UI_FONT,
     VERSION_SAVE_EVERY,
     WARNING,
 )
@@ -88,7 +91,6 @@ class NoteController:
         )
 
         for note in app.notes:
-            date_str = note["updated_at"][:10]
             prefix = ""
             if note["is_pinned"]:
                 prefix += "[P] "
@@ -96,7 +98,7 @@ class NoteController:
                 prefix += "[*] "
             if note["is_encrypted"]:
                 prefix += "[E] "
-            item = QListWidgetItem(f"{prefix}{note['title']}  [{date_str}]")
+            item = QListWidgetItem(f"{prefix}{note['title']}")
             item.setData(Qt.ItemDataRole.UserRole, note["id"])
             app.note_listbox.addItem(item)
 
@@ -269,6 +271,9 @@ class NoteController:
 
         app.text_editor.blockSignals(False)
 
+        if app.editor_tabs.currentIndex() == 1:
+            self.update_preview()
+
         created = note["created_at"][:16].replace("T", " ")
         updated = note["updated_at"][:16].replace("T", " ")
         meta = f"Creata: {created}  |  Modificata: {updated}"
@@ -293,6 +298,7 @@ class NoteController:
         app = self.app
         app.current_note_id = None
         app.editor_stack.setCurrentIndex(0)
+        app.editor_tabs.setCurrentIndex(0)
         app.title_entry.blockSignals(True)
         app.title_entry.clear()
         app.title_entry.blockSignals(False)
@@ -300,6 +306,7 @@ class NoteController:
         app.text_editor.blockSignals(True)
         app.text_editor.clear()
         app.text_editor.blockSignals(False)
+        app.preview_browser.clear()
         app.meta_label.setText("")
         app.tags_label.setText("")
         app._image_refs.clear()
@@ -354,7 +361,6 @@ class NoteController:
         items = app.note_listbox.findItems("*", Qt.MatchFlag.MatchWildcard)
         for item in items:
             if item.data(Qt.ItemDataRole.UserRole) == app.current_note_id:
-                date_str = datetime.now().isoformat()[:10]
                 prefix = ""
                 if note["is_pinned"]:
                     prefix += "[P] "
@@ -362,7 +368,7 @@ class NoteController:
                     prefix += "[*] "
                 if note["is_encrypted"]:
                     prefix += "[E] "
-                item.setText(f"{prefix}{title}  [{date_str}]")
+                item.setText(f"{prefix}{title}")
                 break
 
         app.statusBar().showMessage("Salvato")
@@ -626,6 +632,25 @@ class NoteController:
 
     def _apply_audio_formatting(self) -> None:
         apply_audio_formatting(self.app.text_editor)
+
+    def update_preview(self) -> None:
+        """Render markdown content to HTML in the preview tab."""
+        import markdown
+
+        content = self.app.text_editor.toPlainText()
+        html = markdown.markdown(content, extensions=["fenced_code", "tables", "nl2br"])
+        styled = (
+            f"<div style=\"font-family: '{UI_FONT}', sans-serif; "
+            f"color: {FG_PRIMARY}; background-color: {BG_DARK}; "
+            f'font-size: {FONT_BASE + 1}pt; line-height: 1.6;">'
+            f"{html}</div>"
+        )
+        self.app.preview_browser.setHtml(styled)
+
+    def toggle_preview(self) -> None:
+        """Toggle between edit and preview tabs."""
+        tabs = self.app.editor_tabs
+        tabs.setCurrentIndex(1 if tabs.currentIndex() == 0 else 0)
 
     def insert_audio_marker(self, att_filename: str, description: str) -> None:
         """Inserisce un marker audio alla posizione del cursore."""

@@ -59,6 +59,7 @@ def build_menu(app: MyNotesApp) -> None:
     note_menu.addAction(_action(app, "Cripta nota...", lambda: app.notes_ctl.encrypt_note()))
     note_menu.addAction(_action(app, "Decripta nota...", lambda: app.notes_ctl.decrypt_note()))
     note_menu.addSeparator()
+    note_menu.addAction(_action(app, "Preview Markdown", lambda: app.notes_ctl.toggle_preview(), "Ctrl+M"))
     note_menu.addAction(_action(app, "Inserisci checklist", lambda: app.notes_ctl.insert_checklist(), "Ctrl+L"))
     note_menu.addSeparator()
     note_menu.addAction(_action(app, "Registra audio...", lambda: app.media_ctl.record_audio(), "Ctrl+Shift+A"))
