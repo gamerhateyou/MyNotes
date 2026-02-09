@@ -81,6 +81,7 @@ class MyNotesApp(QMainWindow):
         self.notes_ctl.save_current()
         if self.current_note_id == note_id:
             self.notes_ctl._clear_editor()
+            self.note_listbox.clearSelection()
         from gui.note_window import NoteWindow
         win = NoteWindow(self, note_id)
         self._detached_windows[note_id] = win

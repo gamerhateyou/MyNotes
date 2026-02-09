@@ -64,8 +64,10 @@ class NoteController:
         app.tag_combo.blockSignals(False)
         app.all_tags = all_tags
 
-    def load_notes(self):
+    def load_notes(self, preserve_selection=True):
         app = self.app
+        prev_note_id = app.current_note_id if preserve_selection else None
+
         app.note_listbox.clear()
         search = app.search_entry.text().strip() or None
 
@@ -95,7 +97,14 @@ class NoteController:
         app.statusBar().showMessage(f"{len(app.notes)} nota/e")
 
         if app.notes:
-            app.note_listbox.setCurrentRow(0)
+            # Try to restore previous selection
+            target_row = 0
+            if prev_note_id is not None:
+                for i, note in enumerate(app.notes):
+                    if note["id"] == prev_note_id:
+                        target_row = i
+                        break
+            app.note_listbox.setCurrentRow(target_row)
         else:
             self._clear_editor()
 
@@ -121,8 +130,6 @@ class NoteController:
         self.load_notes()
 
     def on_note_select(self):
-        if getattr(self.app, '_restoring_selection', False):
-            return
         items = self.app.note_listbox.selectedItems()
         if not items:
             return
@@ -294,7 +301,7 @@ class NoteController:
         if app.text_editor.isReadOnly():
             return
         note = db.get_note(app.current_note_id)
-        if not note or note["is_encrypted"] and app.current_note_id not in app._decrypted_cache:
+        if not note or (note["is_encrypted"] and app.current_note_id not in app._decrypted_cache):
             return
 
         title = app.title_entry.text().strip()
@@ -379,6 +386,7 @@ class NoteController:
 
         if len(selected_rows) > 1 and idx in selected_rows:
             # Multi-selection context menu
+            self.save_current()
             menu = QMenu(app)
             self._build_multi_context_menu(menu, selected_rows)
             menu.popup(app.note_listbox.mapToGlobal(pos))
