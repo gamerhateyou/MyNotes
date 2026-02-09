@@ -23,6 +23,9 @@ class NoteController:
         self.app.text_editor.set_app(app)
         # Connect drag-and-drop signal from category list
         self.app.cat_listbox.notes_dropped.connect(self._on_notes_dropped)
+        # Connect inline decrypt overlay
+        self.app.decrypt_btn.clicked.connect(self._inline_decrypt)
+        self.app.decrypt_entry.returnPressed.connect(self._inline_decrypt)
 
     # --- Data Loading ---
 
@@ -68,6 +71,7 @@ class NoteController:
         app = self.app
         prev_note_id = app.current_note_id if preserve_selection else None
 
+        app.note_listbox.blockSignals(True)
         app.note_listbox.clear()
         search = app.search_entry.text().strip() or None
 
@@ -105,10 +109,22 @@ class NoteController:
                         target_row = i
                         break
             app.note_listbox.setCurrentRow(target_row)
+        app.note_listbox.blockSignals(False)
+
+        if app.notes:
+            self.on_note_select()
         else:
             self._clear_editor()
 
     # --- Event Handlers ---
+
+    def _flush_save(self):
+        """Stop pending autosave timer and save immediately."""
+        app = self.app
+        if app._save_job:
+            app._save_job.stop()
+            app._save_job = None
+        self.save_current()
 
     def on_category_select(self):
         app = self.app
@@ -127,6 +143,7 @@ class NoteController:
             app.show_trash = True
         else:
             app.current_category_id = app.categories[row - 2]["id"]
+        self._flush_save()
         self.load_notes()
 
     def on_note_select(self):
@@ -153,17 +170,14 @@ class NoteController:
             self.app.text_editor.setFocus()
 
     def on_search(self):
-        app = self.app
-        if app._save_job:
-            app._save_job.stop()
-            app._save_job = None
-        self.save_current()
+        self._flush_save()
         self.load_notes()
 
     def on_tag_filter(self):
         app = self.app
         idx = app.tag_combo.currentIndex()
         app.current_tag_id = None if idx <= 0 else app.all_tags[idx - 1]["id"]
+        self._flush_save()
         self.load_notes()
 
     def on_note_double_click(self, item):
@@ -230,11 +244,15 @@ class NoteController:
 
         if note["is_encrypted"]:
             if note_id in app._decrypted_cache:
+                app.editor_stack.setCurrentIndex(0)
                 app.text_editor.setPlainText(app._decrypted_cache[note_id])
             else:
-                app.text_editor.setPlainText("[Nota criptata - usa Nota > Decripta nota...]")
+                app.editor_stack.setCurrentIndex(1)
+                app.decrypt_entry.clear()
+                app.decrypt_error_label.setText("")
                 app.text_editor.setReadOnly(True)
         else:
+            app.editor_stack.setCurrentIndex(0)
             app.text_editor.setPlainText(note["content"] or "")
             self._apply_checklist_formatting()
             self._apply_audio_formatting()
@@ -264,6 +282,7 @@ class NoteController:
     def _clear_editor(self):
         app = self.app
         app.current_note_id = None
+        app.editor_stack.setCurrentIndex(0)
         app.title_entry.blockSignals(True)
         app.title_entry.clear()
         app.title_entry.blockSignals(False)
@@ -776,6 +795,29 @@ class NoteController:
         dlg = VersionHistoryDialog(app, app.current_note_id)
         if dlg.result:
             self.display_note(app.current_note_id)
+
+    # --- Inline Decrypt ---
+
+    def _inline_decrypt(self):
+        app = self.app
+        if app.current_note_id is None:
+            return
+        note = db.get_note(app.current_note_id)
+        if not note or not note["is_encrypted"]:
+            return
+        password = app.decrypt_entry.text()
+        if not password:
+            return
+        decrypted = crypto_utils.decrypt(note["content"], password)
+        if decrypted is None:
+            app.decrypt_error_label.setText("Password errata")
+            app.decrypt_entry.selectAll()
+            app.decrypt_entry.setFocus()
+            return
+        app._decrypted_cache[app.current_note_id] = decrypted
+        app.decrypt_entry.clear()
+        app.decrypt_error_label.setText("")
+        self.display_note(app.current_note_id)
 
     # --- Encryption ---
 

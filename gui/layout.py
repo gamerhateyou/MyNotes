@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QToolBar, QPushButton, QMenu, QLabel, QLineEdit, QComboBox,
     QSplitter, QVBoxLayout, QHBoxLayout, QWidget, QFrame,
     QScrollArea, QPlainTextEdit, QListWidget, QAbstractItemView,
-    QStatusBar
+    QStatusBar, QStackedWidget
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QFont, QColor, QTextCharFormat
@@ -12,7 +12,7 @@ from PySide6.QtGui import QFont, QColor, QTextCharFormat
 from gui.constants import (UI_FONT, MONO_FONT, FONT_XS, FONT_SM, FONT_BASE, FONT_LG, FONT_XL,
                            BG_DARK, BG_SURFACE, BG_ELEVATED,
                            BORDER, FG_PRIMARY, FG_SECONDARY, FG_MUTED,
-                           ACCENT, FG_ON_ACCENT, INFO, SELECT_BG, SELECT_FG)
+                           ACCENT, FG_ON_ACCENT, INFO, DANGER, SELECT_BG, SELECT_FG)
 
 
 def build_toolbar(app):
@@ -171,13 +171,53 @@ def build_main_layout(app):
     editor_splitter = QSplitter(Qt.Vertical)
     editor_layout.addWidget(editor_splitter)
 
-    # Text editor
+    # QStackedWidget for editor / decrypt overlay
+    app.editor_stack = QStackedWidget()
+
+    # Page 0: text editor
     from gui.widgets import ChecklistEditor
     app.text_editor = ChecklistEditor()
     app.text_editor.setFont(QFont(MONO_FONT, FONT_LG))
     app.text_editor.setPlaceholderText("Scrivi qui...")
     app.text_editor.textChanged.connect(lambda: app.notes_ctl.schedule_save())
-    editor_splitter.addWidget(app.text_editor)
+    app.editor_stack.addWidget(app.text_editor)
+
+    # Page 1: decrypt overlay
+    encrypt_overlay = QWidget()
+    overlay_layout = QVBoxLayout(encrypt_overlay)
+    overlay_layout.setAlignment(Qt.AlignCenter)
+
+    lock_label = QLabel("Nota criptata")
+    lock_label.setFont(QFont(UI_FONT, FONT_XL))
+    lock_label.setAlignment(Qt.AlignCenter)
+    lock_label.setStyleSheet(f"color: {FG_SECONDARY};")
+    overlay_layout.addWidget(lock_label)
+
+    hint_label = QLabel("Inserisci la password per visualizzare il contenuto")
+    hint_label.setAlignment(Qt.AlignCenter)
+    hint_label.setStyleSheet(f"color: {FG_MUTED};")
+    overlay_layout.addWidget(hint_label)
+
+    pw_row = QHBoxLayout()
+    pw_row.setAlignment(Qt.AlignCenter)
+    app.decrypt_entry = QLineEdit()
+    app.decrypt_entry.setEchoMode(QLineEdit.Password)
+    app.decrypt_entry.setPlaceholderText("Password...")
+    app.decrypt_entry.setFixedWidth(250)
+    pw_row.addWidget(app.decrypt_entry)
+
+    app.decrypt_btn = QPushButton("Sblocca")
+    pw_row.addWidget(app.decrypt_btn)
+    overlay_layout.addLayout(pw_row)
+
+    app.decrypt_error_label = QLabel("")
+    app.decrypt_error_label.setAlignment(Qt.AlignCenter)
+    app.decrypt_error_label.setStyleSheet(f"color: {DANGER};")
+    overlay_layout.addWidget(app.decrypt_error_label)
+
+    app.editor_stack.addWidget(encrypt_overlay)
+
+    editor_splitter.addWidget(app.editor_stack)
 
     # Gallery area
     gallery_widget = QWidget()

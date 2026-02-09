@@ -46,6 +46,7 @@ class NoteWindow(QMainWindow):
         self.selected_image_index = None
         self.gallery_attachments = []
         self._gallery_load_id = None
+        self._closing = False
         self.notes_ctl = self  # Proxy so ChecklistEditor can call notes_ctl methods
 
         self.resize(900, 650)
@@ -581,13 +582,18 @@ class NoteWindow(QMainWindow):
     # --- Lifecycle ---
 
     def _on_close(self):
+        if self._closing:
+            return
+        self._closing = True
         self.save_current()
         self.app._detached_windows.pop(self.note_id, None)
         self.app.notes_ctl.load_notes()
         self.close()
 
     def closeEvent(self, event):
-        self.save_current()
-        self.app._detached_windows.pop(self.note_id, None)
-        self.app.notes_ctl.load_notes()
+        if not self._closing:
+            self._closing = True
+            self.save_current()
+            self.app._detached_windows.pop(self.note_id, None)
+            self.app.notes_ctl.load_notes()
         event.accept()
