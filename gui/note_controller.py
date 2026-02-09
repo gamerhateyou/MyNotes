@@ -228,9 +228,11 @@ class NoteController:
         if note_id in app._detached_windows:
             return
         self._displaying = True
+        app.note_listbox.blockSignals(True)
         try:
             self._display_note_inner(note_id)
         finally:
+            app.note_listbox.blockSignals(False)
             self._displaying = False
 
     def _display_note_inner(self, note_id):
