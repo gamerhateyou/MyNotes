@@ -20,7 +20,6 @@ from dialogs import (CategoryDialog, NoteDialog, TagManagerDialog, AttachmentDia
 class NoteController:
     def __init__(self, app):
         self.app = app
-        self._displaying = False  # reentrancy guard
         self.app.text_editor.set_app(app)
         # Connect drag-and-drop signal from category list
         self.app.cat_listbox.notes_dropped.connect(self._on_notes_dropped)
@@ -54,9 +53,7 @@ class NoteController:
         if item_trash:
             item_trash.setForeground(QColor(DANGER))
 
-        app.cat_listbox.blockSignals(True)
         app.cat_listbox.setCurrentRow(0)
-        app.cat_listbox.blockSignals(False)
 
         all_tags = db.get_all_tags()
         app.tag_combo.blockSignals(True)
@@ -72,7 +69,6 @@ class NoteController:
         app = self.app
         prev_note_id = app.current_note_id if preserve_selection else None
 
-        app.note_listbox.blockSignals(True)
         app.note_listbox.clear()
         search = app.search_entry.text().strip() or None
 
@@ -109,7 +105,6 @@ class NoteController:
                         target_row = i
                         break
             app.note_listbox.setCurrentRow(target_row)
-        app.note_listbox.blockSignals(False)
 
         if app.notes:
             self.display_note(app.notes[target_row]["id"])
@@ -146,9 +141,22 @@ class NoteController:
         self._flush_save()
         self.load_notes()
 
-    def on_note_select(self):
-        if self._displaying:
+    def on_note_click(self, item):
+        """Handle user click on a note list item."""
+        if not item:
             return
+        items = self.app.note_listbox.selectedItems()
+        if len(items) > 1:
+            self.save_current()
+            self._clear_editor()
+            self.app.statusBar().showMessage(f"{len(items)} note selezionate")
+            return
+        note_id = item.data(Qt.UserRole)
+        if note_id is not None:
+            self.display_note(note_id)
+
+    def on_note_select(self):
+        """Used by show_context_menu() for programmatic single-note selection."""
         items = self.app.note_listbox.selectedItems()
         if not items:
             return
@@ -156,10 +164,6 @@ class NoteController:
             note_id = items[0].data(Qt.UserRole)
             if note_id is not None:
                 self.display_note(note_id)
-        else:
-            self.save_current()
-            self._clear_editor()
-            self.app.statusBar().showMessage(f"{len(items)} note selezionate")
 
     def focus_search(self):
         self.app.search_entry.setFocus()
@@ -223,20 +227,8 @@ class NoteController:
 
     def display_note(self, note_id):
         app = self.app
-        if self._displaying:
-            return
         if note_id in app._detached_windows:
             return
-        self._displaying = True
-        app.note_listbox.blockSignals(True)
-        try:
-            self._display_note_inner(note_id)
-        finally:
-            app.note_listbox.blockSignals(False)
-            self._displaying = False
-
-    def _display_note_inner(self, note_id):
-        app = self.app
         self.save_current()
         app.current_note_id = note_id
         # Clear decrypted cache for previous note
@@ -354,8 +346,7 @@ class NoteController:
         else:
             db.update_note(app.current_note_id, title=title, content=content)
 
-        # Update list item text (block signals to prevent cascade)
-        app.note_listbox.blockSignals(True)
+        # Update list item text (safe: no currentRowChanged connected)
         items = app.note_listbox.findItems("*", Qt.MatchWildcard)
         for item in items:
             if item.data(Qt.UserRole) == app.current_note_id:
@@ -369,7 +360,6 @@ class NoteController:
                     prefix += "[E] "
                 item.setText(f"{prefix}{title}  [{date_str}]")
                 break
-        app.note_listbox.blockSignals(False)
 
         app.statusBar().showMessage("Salvato")
 

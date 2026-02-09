@@ -100,7 +100,7 @@ def build_main_layout(app):
     from gui.widgets import CategoryList
     app.cat_listbox = CategoryList()
     app.cat_listbox.setStyleSheet(f"background-color: {BG_SURFACE}; border: none;")
-    app.cat_listbox.currentRowChanged.connect(lambda: app.notes_ctl.on_category_select())
+    app.cat_listbox.itemClicked.connect(lambda item: app.notes_ctl.on_category_select())
     app.cat_listbox.setContextMenuPolicy(Qt.CustomContextMenu)
     app.cat_listbox.customContextMenuRequested.connect(
         lambda pos: app.notes_ctl.show_category_context_menu(pos))
@@ -126,7 +126,7 @@ def build_main_layout(app):
     from gui.widgets import DraggableNoteList
     app.note_listbox = DraggableNoteList()
     app.note_listbox.setSelectionMode(QAbstractItemView.ExtendedSelection)
-    app.note_listbox.currentRowChanged.connect(lambda: app.notes_ctl.on_note_select())
+    app.note_listbox.itemClicked.connect(lambda item: app.notes_ctl.on_note_click(item))
     app.note_listbox.setContextMenuPolicy(Qt.CustomContextMenu)
     app.note_listbox.customContextMenuRequested.connect(
         lambda pos: app.notes_ctl.show_context_menu(pos))
