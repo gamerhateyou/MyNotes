@@ -280,3 +280,11 @@ def build_main_layout(app):
     status_bar = QStatusBar()
     app.setStatusBar(status_bar)
     status_bar.showMessage("Pronto")
+
+    # Branding link (permanent widget, right side)
+    from PySide6.QtGui import QDesktopServices
+    from PySide6.QtCore import QUrl
+    brand_label = QLabel('<a href="https://homelabz.cc" style="color: {accent};">homelabz.cc</a>'.format(accent=ACCENT))
+    brand_label.setOpenExternalLinks(True)
+    brand_label.setStyleSheet(f"padding-right: 8px; font-size: {FONT_SM}pt;")
+    status_bar.addPermanentWidget(brand_label)

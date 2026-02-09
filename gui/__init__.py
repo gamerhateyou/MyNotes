@@ -27,7 +27,7 @@ log = logging.getLogger("app")
 class MyNotesApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"MyNotes v{VERSION}")
+        self.setWindowTitle(f"MyNotes v{VERSION} by homelabz")
         self.resize(1200, 750)
         self.setMinimumSize(900, 550)
 
