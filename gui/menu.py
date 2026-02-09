@@ -28,6 +28,7 @@ def build_menu(app: MyNotesApp) -> None:
     file_menu.addSeparator()
     file_menu.addAction(_action(app, "Condividi nota (.mynote)...", lambda: app.export_ctl.export_mynote()))
     file_menu.addAction(_action(app, "Importa nota (.mynote)...", lambda: app.export_ctl.import_mynote()))
+    file_menu.addAction(_action(app, "Importa Markdown (.md)...", lambda: app.export_ctl.import_markdown()))
     file_menu.addSeparator()
     file_menu.addAction(_action(app, "Esci", lambda: app.close(), "Ctrl+Q"))
 

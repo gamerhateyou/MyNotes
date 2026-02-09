@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QFileDialog, QMessageBox
@@ -155,3 +156,23 @@ class ExportController:
             app.notes_ctl.load_notes()
             app.statusBar().showMessage(f"Importate {imported} nota/e")
             QMessageBox.information(app, "Importa", f"{imported} nota/e importate con successo!")
+
+    def import_markdown(self) -> None:
+        app = self.app
+        paths, _ = QFileDialog.getOpenFileNames(app, "Importa Markdown", "", "Markdown (*.md);;Tutti (*.*)")
+        if not paths:
+            return
+        imported = 0
+        for path in paths:
+            try:
+                title = Path(path).stem
+                with open(path, encoding="utf-8") as f:
+                    content = f.read()
+                db.add_note(title, content)
+                imported += 1
+            except Exception as e:
+                QMessageBox.critical(app, "Errore", f"Importazione fallita per {os.path.basename(path)}:\n{e}")
+        if imported:
+            app.notes_ctl.load_notes()
+            app.statusBar().showMessage(f"Importate {imported} nota/e Markdown")
+            QMessageBox.information(app, "Importa Markdown", f"{imported} nota/e Markdown importate con successo!")
