@@ -180,7 +180,8 @@ class MyNotesApp(QMainWindow):
             QListWidget {{
                 background-color: {BG_ELEVATED};
                 color: {FG_PRIMARY};
-                border: 1px solid {BORDER};
+                border: none;
+                border-right: 1px solid {BORDER};
                 font-size: {FONT_BASE}pt;
             }}
             QListWidget::item:selected {{
@@ -214,16 +215,16 @@ class MyNotesApp(QMainWindow):
                 background-color: {BORDER_LIGHT};
             }}
             QSplitter::handle:horizontal {{
-                width: 4px;
+                width: 2px;
             }}
             QSplitter::handle:vertical {{
-                height: 4px;
+                height: 2px;
             }}
             QToolBar {{
                 background-color: {BG_SURFACE};
                 border-bottom: 1px solid {BORDER};
-                spacing: 4px;
-                padding: 4px;
+                spacing: 6px;
+                padding: 6px;
             }}
             QMenuBar {{
                 background-color: {BG_SURFACE};
@@ -248,19 +249,27 @@ class MyNotesApp(QMainWindow):
             QScrollArea {{
                 background-color: {BG_ELEVATED};
                 border: 1px solid {BORDER};
+                border-radius: 4px;
             }}
             QPushButton {{
                 background-color: {BG_ELEVATED};
                 color: {FG_PRIMARY};
                 border: 1px solid {BORDER};
-                padding: 4px 12px;
-                border-radius: 3px;
+                padding: 5px 14px;
+                border-radius: 4px;
             }}
             QPushButton:hover {{
                 background-color: {BORDER_LIGHT};
+                border-color: {ACCENT};
             }}
             QPushButton:pressed {{
                 background-color: {BORDER};
+            }}
+            QPushButton::menu-indicator {{
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
+                right: 6px;
+                width: 10px;
             }}
             QLabel {{
                 color: {FG_PRIMARY};

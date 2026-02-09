@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QStatusBar,
+    QStyle,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -43,21 +44,27 @@ if TYPE_CHECKING:
 def build_toolbar(app: MyNotesApp) -> None:
     toolbar = QToolBar("Toolbar")
     toolbar.setMovable(False)
-    toolbar.setIconSize(QSize(16, 16))
+    toolbar.setIconSize(QSize(20, 20))
     app.addToolBar(toolbar)
 
-    new_note_btn = QPushButton("+ Nota")
+    style = app.style()
+    assert style is not None
+
+    new_note_btn = QPushButton("Nota")
+    new_note_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_FileIcon))
     new_note_btn.clicked.connect(lambda: app.notes_ctl.new_note())
     toolbar.addWidget(new_note_btn)
 
-    new_cat_btn = QPushButton("+ Categoria")
+    new_cat_btn = QPushButton("Categoria")
+    new_cat_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DirIcon))
     new_cat_btn.clicked.connect(lambda: app.notes_ctl.new_category())
     toolbar.addWidget(new_cat_btn)
 
     toolbar.addSeparator()
 
     # Dropdown "Nota"
-    note_btn = QPushButton("Nota \u25be")
+    note_btn = QPushButton("Nota")
+    note_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
     note_menu = QMenu(note_btn)
     note_menu.addAction("Fissa/Sgancia", lambda: app.notes_ctl.toggle_pin())
     note_menu.addAction("Preferita", lambda: app.notes_ctl.toggle_favorite())
@@ -68,7 +75,8 @@ def build_toolbar(app: MyNotesApp) -> None:
     toolbar.addWidget(note_btn)
 
     # Dropdown "Inserisci"
-    ins_btn = QPushButton("Inserisci \u25be")
+    ins_btn = QPushButton("Inserisci")
+    ins_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton))
     ins_menu = QMenu(ins_btn)
     ins_menu.addAction("Screenshot intero", lambda: app.media_ctl.take_screenshot())
     ins_menu.addAction("Screenshot regione", lambda: app.media_ctl.take_screenshot_region())
@@ -83,18 +91,14 @@ def build_toolbar(app: MyNotesApp) -> None:
 
     toolbar.addSeparator()
 
-    search_label = QLabel("  Cerca:")
-    toolbar.addWidget(search_label)
     app.search_entry = QLineEdit()
-    app.search_entry.setFixedWidth(160)
+    app.search_entry.setFixedWidth(180)
     app.search_entry.setPlaceholderText("Cerca note...")
     app.search_entry.textChanged.connect(lambda: app.notes_ctl.on_search())
     toolbar.addWidget(app.search_entry)
 
-    tag_label = QLabel("  Tag:")
-    toolbar.addWidget(tag_label)
     app.tag_combo = QComboBox()
-    app.tag_combo.setFixedWidth(120)
+    app.tag_combo.setFixedWidth(140)
     app.tag_combo.currentIndexChanged.connect(lambda: app.notes_ctl.on_tag_filter())
     toolbar.addWidget(app.tag_combo)
 
@@ -163,8 +167,8 @@ def build_main_layout(app: MyNotesApp) -> None:
     # --- Right (editor) ---
     editor_widget = QWidget()
     editor_layout = QVBoxLayout(editor_widget)
-    editor_layout.setContentsMargins(10, 0, 10, 10)
-    editor_layout.setSpacing(2)
+    editor_layout.setContentsMargins(10, 6, 10, 10)
+    editor_layout.setSpacing(6)
 
     # Title
     app.title_entry = QLineEdit()
@@ -246,19 +250,26 @@ def build_main_layout(app: MyNotesApp) -> None:
 
     gallery_header = QWidget()
     gallery_header_layout = QHBoxLayout(gallery_header)
-    gallery_header_layout.setContentsMargins(5, 2, 5, 2)
+    gallery_header_layout.setContentsMargins(8, 4, 8, 4)
+    gallery_header_layout.setSpacing(4)
     gallery_header_label = QLabel("Immagini allegate")
     gallery_header_label.setStyleSheet(f"color: {FG_SECONDARY}; font-size: {FONT_SM}pt;")
     gallery_header_layout.addWidget(gallery_header_label)
     gallery_header_layout.addStretch()
 
+    style_g = app.style()
+    assert style_g is not None
+
     remove_btn = QPushButton("Rimuovi")
+    remove_btn.setIcon(style_g.standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
     remove_btn.clicked.connect(lambda: app.media_ctl.remove_selected())
     gallery_header_layout.addWidget(remove_btn)
     open_btn = QPushButton("Apri")
+    open_btn.setIcon(style_g.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton))
     open_btn.clicked.connect(lambda: app.media_ctl.open_selected())
     gallery_header_layout.addWidget(open_btn)
     annotate_btn = QPushButton("Annota")
+    annotate_btn.setIcon(style_g.standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView))
     annotate_btn.clicked.connect(lambda: app.media_ctl.annotate_selected())
     gallery_header_layout.addWidget(annotate_btn)
 

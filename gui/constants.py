@@ -45,3 +45,9 @@ FONT_SM: int = 9
 FONT_BASE: int = 10
 FONT_LG: int = 11
 FONT_XL: int = 14
+
+# Spacing
+SPACING_XS: int = 2
+SPACING_SM: int = 4
+SPACING_MD: int = 8
+SPACING_LG: int = 12
