@@ -1,17 +1,30 @@
 """Version history dialog."""
 
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                                QPushButton, QListWidget, QPlainTextEdit,
-                                QMessageBox)
+from __future__ import annotations
+
+import sqlite3
+
+from PySide6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
 import database as db
 
 
 class VersionHistoryDialog(QDialog):
-    def __init__(self, parent, note_id):
+    def __init__(self, parent: QWidget, note_id: int) -> None:
         super().__init__(parent)
         self.setWindowTitle("Cronologia versioni")
-        self.note_id = note_id
-        self.result = None
+        self.note_id: int = note_id
+        self.result: bool | None = None  # type: ignore[assignment]
         self.resize(600, 450)
         self.setModal(True)
 
@@ -40,7 +53,7 @@ class VersionHistoryDialog(QDialog):
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
 
-        self.versions = db.get_note_versions(note_id)
+        self.versions: list[sqlite3.Row] = db.get_note_versions(note_id)
         for v in self.versions:
             date = v["saved_at"][:19].replace("T", " ")
             title = v["title"][:40]
@@ -51,21 +64,23 @@ class VersionHistoryDialog(QDialog):
 
         self.exec()
 
-    def _on_select(self, row):
+    def _on_select(self, row: int) -> None:
         if row < 0 or not self.versions:
             return
         ver = self.versions[row]
         self.preview.setPlainText(ver["content"] or "")
 
-    def _restore(self):
+    def _restore(self) -> None:
         row = self.version_list.currentRow()
         if row < 0 or not self.versions:
             return
         ver = self.versions[row]
-        if QMessageBox.question(
-            self, "Ripristina",
-            "Ripristinare questa versione?\nLa versione attuale verra' salvata."
-        ) == QMessageBox.Yes:
+        if (
+            QMessageBox.question(
+                self, "Ripristina", "Ripristinare questa versione?\nLa versione attuale verra' salvata."
+            )
+            == QMessageBox.StandardButton.Yes
+        ):
             note = db.get_note(self.note_id)
             if note:
                 db.save_version(self.note_id, note["title"], note["content"])

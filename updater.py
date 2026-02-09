@@ -1,38 +1,40 @@
 """Sistema di auto-aggiornamento da GitHub Releases."""
 
+from __future__ import annotations
+
 import json
 import logging
 import os
-import sys
 import shutil
-import tempfile
-import platform
-import threading
-from urllib.request import urlopen, Request
-from urllib.error import URLError
-
 import ssl
+import sys
+import tempfile
+from collections.abc import Callable
+from typing import Any
+from urllib.error import URLError
+from urllib.request import Request, urlopen
+
 import certifi
 
-from version import VERSION, GITHUB_REPO
 from error_codes import AppError
+from version import GITHUB_REPO, VERSION
 
-log = logging.getLogger("updater")
+log: logging.Logger = logging.getLogger("updater")
 
-if getattr(sys, 'frozen', False):
-    APP_DIR = os.path.dirname(sys.executable)
+if getattr(sys, "frozen", False):
+    APP_DIR: str = os.path.dirname(sys.executable)
 else:
-    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    APP_DIR: str = os.path.dirname(os.path.abspath(__file__))  # type: ignore[no-redef]
 
-SETTINGS_PATH = os.path.join(APP_DIR, "data", "update_settings.json")
+SETTINGS_PATH: str = os.path.join(APP_DIR, "data", "update_settings.json")
 
 
-def get_update_settings():
+def get_update_settings() -> dict[str, Any]:
     """Ritorna le preferenze di aggiornamento con defaults."""
     defaults = {"auto_check": True, "skipped_versions": []}
     if os.path.exists(SETTINGS_PATH):
         try:
-            with open(SETTINGS_PATH, "r") as f:
+            with open(SETTINGS_PATH) as f:
                 saved = json.load(f)
                 defaults.update(saved)
         except (json.JSONDecodeError, OSError):
@@ -40,14 +42,14 @@ def get_update_settings():
     return defaults
 
 
-def save_update_settings(settings):
+def save_update_settings(settings: dict[str, Any]) -> None:
     """Salva le preferenze di aggiornamento."""
     os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
     with open(SETTINGS_PATH, "w") as f:
         json.dump(settings, f, indent=2)
 
 
-def _parse_version(v):
+def _parse_version(v: str) -> tuple[int, ...]:
     """Converte 'v1.2.3' o '1.2.3' in tupla (1, 2, 3)."""
     v = v.lstrip("v").strip()
     parts = []
@@ -59,7 +61,7 @@ def _parse_version(v):
     return tuple(parts)
 
 
-def check_for_updates(skip_versions=None):
+def check_for_updates(skip_versions: list[str] | None = None) -> tuple[str, str, str] | None:
     """
     Controlla se esiste una versione più recente su GitHub.
     Ritorna (new_version, download_url, release_notes) oppure None.
@@ -81,13 +83,13 @@ def check_for_updates(skip_versions=None):
             raw = resp.read().decode()
     except (URLError, OSError) as e:
         log.error("Errore rete GitHub: %s: %s", type(e).__name__, e)
-        raise AppError("UPD-001", str(e))
+        raise AppError("UPD-001", str(e)) from e
 
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, ValueError) as e:
         log.error("Risposta GitHub non valida: %s", e)
-        raise AppError("UPD-002", str(e))
+        raise AppError("UPD-002", str(e)) from e
 
     tag = data.get("tag_name", "")
     remote_ver = _parse_version(tag)
@@ -124,7 +126,7 @@ def check_for_updates(skip_versions=None):
     return (tag, download_url, notes)
 
 
-def download_and_apply_update(download_url, progress_callback=None):
+def download_and_apply_update(download_url: str, progress_callback: Callable[[int, str], None] | None = None) -> bool:
     """
     Scarica l'aggiornamento e lo applica.
     progress_callback(percentage, message) viene chiamato durante il download.
@@ -160,7 +162,7 @@ def download_and_apply_update(download_url, progress_callback=None):
                             pct = int(downloaded * 100 / total)
                             progress_callback(pct, f"Download: {downloaded // 1024} / {total // 1024} KB")
         except (URLError, OSError) as e:
-            raise AppError("UPD-004", str(e))
+            raise AppError("UPD-004", str(e)) from e
 
         if progress_callback:
             progress_callback(100, "Estrazione archivio...")
@@ -172,14 +174,16 @@ def download_and_apply_update(download_url, progress_callback=None):
         try:
             if archive_path.endswith(".zip"):
                 import zipfile
-                with zipfile.ZipFile(archive_path, 'r') as z:
+
+                with zipfile.ZipFile(archive_path, "r") as z:
                     z.extractall(extract_dir)
             else:
                 import tarfile
-                with tarfile.open(archive_path, 'r:gz') as t:
+
+                with tarfile.open(archive_path, "r:gz") as t:
                     t.extractall(extract_dir)
         except Exception as e:
-            raise AppError("UPD-005", str(e))
+            raise AppError("UPD-005", str(e)) from e
 
         # Trova la cartella estratta (potrebbe essere MyNotes/ dentro l'archivio)
         extracted_contents = os.listdir(extract_dir)
@@ -199,7 +203,7 @@ def download_and_apply_update(download_url, progress_callback=None):
                 _apply_files(source_dir, APP_DIR)
                 shutil.rmtree(tmp_dir, ignore_errors=True)
         except Exception as e:
-            raise AppError("UPD-006", str(e))
+            raise AppError("UPD-006", str(e)) from e
 
         return True
 
@@ -217,7 +221,7 @@ def download_and_apply_update(download_url, progress_callback=None):
         return False
 
 
-def _apply_files(source_dir, dest_dir):
+def _apply_files(source_dir: str, dest_dir: str) -> None:
     """Copia i file aggiornati preservando data/."""
     for item in os.listdir(source_dir):
         if item == "data":
@@ -238,7 +242,7 @@ def _apply_files(source_dir, dest_dir):
             shutil.copy2(src, dst)
 
 
-def _create_windows_update_script(source_dir, app_dir, tmp_dir):
+def _create_windows_update_script(source_dir: str, app_dir: str, tmp_dir: str) -> None:
     """Crea un .bat che aggiorna l'app dopo la chiusura su Windows."""
     bat_path = os.path.join(tmp_dir, "update.bat")
 
@@ -278,16 +282,17 @@ def _create_windows_update_script(source_dir, app_dir, tmp_dir):
 
     # Lancia lo script in background
     import subprocess
+
     subprocess.Popen(
         ["cmd", "/c", bat_path],
         creationflags=0x00000008,  # DETACHED_PROCESS
-        close_fds=True
+        close_fds=True,
     )
 
 
-def get_restart_command():
+def get_restart_command() -> list[str]:
     """Ritorna il comando per riavviare l'app."""
-    if getattr(sys, 'frozen', False):
+    if getattr(sys, "frozen", False):
         return [sys.executable]
     else:
         return [sys.executable] + sys.argv

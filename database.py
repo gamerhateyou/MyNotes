@@ -1,29 +1,40 @@
-import sqlite3
+from __future__ import annotations
+
 import os
-import sys
+import sqlite3
 import stat
+import sys
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from typing import Any
 
-# Sentinel to explicitly set a field to NULL (distinct from None which means "keep existing")
-_UNSET = object()
+
+class _Sentinel:
+    """Sentinel value for explicit NULL."""
+
+    def __repr__(self) -> str:
+        return "<_UNSET>"
+
+
+_UNSET = _Sentinel()
 
 # Portable: tutto relativo alla cartella dell'app
-if getattr(sys, 'frozen', False):
-    APP_DIR = os.path.dirname(sys.executable)
+if getattr(sys, "frozen", False):
+    APP_DIR: str = os.path.dirname(sys.executable)
 else:
-    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    APP_DIR: str = os.path.dirname(os.path.abspath(__file__))  # type: ignore[no-redef]
 
-DATA_DIR = os.path.join(APP_DIR, "data")
-DB_PATH = os.path.join(DATA_DIR, "mynotes.db")
-ATTACHMENTS_DIR = os.path.join(DATA_DIR, "attachments")
-BACKUP_DIR = os.path.join(DATA_DIR, "backups")
+DATA_DIR: str = os.path.join(APP_DIR, "data")
+DB_PATH: str = os.path.join(DATA_DIR, "mynotes.db")
+ATTACHMENTS_DIR: str = os.path.join(DATA_DIR, "attachments")
+BACKUP_DIR: str = os.path.join(DATA_DIR, "backups")
 
-TRASH_PURGE_DAYS = 30
+TRASH_PURGE_DAYS: int = 30
 
 
 @contextmanager
-def _connect():
+def _connect() -> Generator[sqlite3.Connection, None, None]:
     """Context manager for safe database connections."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -35,7 +46,7 @@ def _connect():
         conn.close()
 
 
-def get_connection():
+def get_connection() -> sqlite3.Connection:
     """Legacy helper - prefer _connect() context manager."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -44,20 +55,20 @@ def get_connection():
     return conn
 
 
-def _secure_dir(path):
+def _secure_dir(path: str) -> None:
     """Create directory with owner-only permissions (rwx------)."""
     os.makedirs(path, exist_ok=True)
     if sys.platform != "win32":
         os.chmod(path, stat.S_IRWXU)
 
 
-def _secure_file(path):
+def _secure_file(path: str) -> None:
     """Set file to owner-only permissions (rw-------)."""
     if os.path.exists(path) and sys.platform != "win32":
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 
 
-def init_db():
+def init_db() -> None:
     _secure_dir(DATA_DIR)
     _secure_dir(ATTACHMENTS_DIR)
     _secure_dir(BACKUP_DIR)
@@ -124,7 +135,7 @@ def init_db():
     purge_trash(TRASH_PURGE_DAYS)
 
 
-def _migrate(conn):
+def _migrate(conn: sqlite3.Connection) -> None:
     """Add new columns to existing databases."""
     existing = {row[1] for row in conn.execute("PRAGMA table_info(notes)").fetchall()}
     migrations = [
@@ -141,12 +152,13 @@ def _migrate(conn):
 
 # --- Categories ---
 
-def get_all_categories():
+
+def get_all_categories() -> list[sqlite3.Row]:
     with _connect() as conn:
         return conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
 
 
-def add_category(name):
+def add_category(name: str) -> None:
     with _connect() as conn:
         try:
             conn.execute("INSERT INTO categories (name) VALUES (?)", (name,))
@@ -155,7 +167,7 @@ def add_category(name):
             pass
 
 
-def rename_category(cat_id, new_name):
+def rename_category(cat_id: int, new_name: str) -> None:
     with _connect() as conn:
         try:
             conn.execute("UPDATE categories SET name = ? WHERE id = ?", (new_name, cat_id))
@@ -164,7 +176,7 @@ def rename_category(cat_id, new_name):
             pass
 
 
-def delete_category(cat_id):
+def delete_category(cat_id: int) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
         conn.commit()
@@ -172,13 +184,19 @@ def delete_category(cat_id):
 
 # --- Notes ---
 
-def get_all_notes(category_id=None, tag_id=None, search_query=None,
-                  show_deleted=False, favorites_only=False):
+
+def get_all_notes(
+    category_id: int | None = None,
+    tag_id: int | None = None,
+    search_query: str | None = None,
+    show_deleted: bool = False,
+    favorites_only: bool = False,
+) -> list[sqlite3.Row]:
     with _connect() as conn:
         query = "SELECT DISTINCT n.* FROM notes n"
         joins = []
         conditions = []
-        params = []
+        params: list[int | str] = []
 
         conditions.append("n.is_deleted = 1" if show_deleted else "n.is_deleted = 0")
 
@@ -205,12 +223,12 @@ def get_all_notes(category_id=None, tag_id=None, search_query=None,
         return conn.execute(query, params).fetchall()
 
 
-def get_note(note_id):
+def get_note(note_id: int) -> sqlite3.Row | None:
     with _connect() as conn:
-        return conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
+        return conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()  # type: ignore[no-any-return]
 
 
-def add_note(title, content="", category_id=None):
+def add_note(title: str, content: str = "", category_id: int | None = None) -> int:
     now = datetime.now().isoformat()
     with _connect() as conn:
         cur = conn.execute(
@@ -219,10 +237,13 @@ def add_note(title, content="", category_id=None):
         )
         note_id = cur.lastrowid
         conn.commit()
+        assert note_id is not None
         return note_id
 
 
-def update_note(note_id, title=None, content=None, category_id=None):
+def update_note(
+    note_id: int, title: str | None = None, content: str | None = None, category_id: int | _Sentinel | None = None
+) -> None:
     with _connect() as conn:
         note = conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
         if not note:
@@ -241,50 +262,48 @@ def update_note(note_id, title=None, content=None, category_id=None):
                 title if title is not None else note["title"],
                 content if content is not None else note["content"],
                 effective_category,
-                now, note_id,
+                now,
+                note_id,
             ),
         )
         conn.commit()
 
 
-def toggle_pin(note_id):
+def toggle_pin(note_id: int) -> None:
     with _connect() as conn:
         note = conn.execute("SELECT is_pinned FROM notes WHERE id = ?", (note_id,)).fetchone()
         if note:
-            conn.execute("UPDATE notes SET is_pinned = ? WHERE id = ?",
-                         (0 if note["is_pinned"] else 1, note_id))
+            conn.execute("UPDATE notes SET is_pinned = ? WHERE id = ?", (0 if note["is_pinned"] else 1, note_id))
             conn.commit()
 
 
-def toggle_favorite(note_id):
+def toggle_favorite(note_id: int) -> None:
     with _connect() as conn:
         note = conn.execute("SELECT is_favorite FROM notes WHERE id = ?", (note_id,)).fetchone()
         if note:
-            conn.execute("UPDATE notes SET is_favorite = ? WHERE id = ?",
-                         (0 if note["is_favorite"] else 1, note_id))
+            conn.execute("UPDATE notes SET is_favorite = ? WHERE id = ?", (0 if note["is_favorite"] else 1, note_id))
             conn.commit()
 
 
 # --- Trash ---
 
-def soft_delete_note(note_id):
+
+def soft_delete_note(note_id: int) -> None:
     now = datetime.now().isoformat()
     with _connect() as conn:
         conn.execute("UPDATE notes SET is_deleted = 1, deleted_at = ? WHERE id = ?", (now, note_id))
         conn.commit()
 
 
-def restore_note(note_id):
+def restore_note(note_id: int) -> None:
     with _connect() as conn:
         conn.execute("UPDATE notes SET is_deleted = 0, deleted_at = NULL WHERE id = ?", (note_id,))
         conn.commit()
 
 
-def permanent_delete_note(note_id):
+def permanent_delete_note(note_id: int) -> None:
     with _connect() as conn:
-        attachments = conn.execute(
-            "SELECT filename FROM attachments WHERE note_id = ?", (note_id,)
-        ).fetchall()
+        attachments = conn.execute("SELECT filename FROM attachments WHERE note_id = ?", (note_id,)).fetchall()
         for att in attachments:
             path = os.path.join(ATTACHMENTS_DIR, att["filename"])
             if os.path.exists(path):
@@ -293,13 +312,14 @@ def permanent_delete_note(note_id):
         conn.commit()
 
 
-def purge_trash(days=TRASH_PURGE_DAYS):
+def purge_trash(days: int = TRASH_PURGE_DAYS) -> None:
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
     with _connect() as conn:
         old_notes = conn.execute(
             "SELECT n.id, a.filename FROM notes n "
             "LEFT JOIN attachments a ON a.note_id = n.id "
-            "WHERE n.is_deleted = 1 AND n.deleted_at < ?", (cutoff,)
+            "WHERE n.is_deleted = 1 AND n.deleted_at < ?",
+            (cutoff,),
         ).fetchall()
         # Cancella file allegati
         for row in old_notes:
@@ -315,7 +335,7 @@ def purge_trash(days=TRASH_PURGE_DAYS):
             conn.commit()
 
 
-def soft_delete_notes(note_ids):
+def soft_delete_notes(note_ids: list[int]) -> None:
     if not note_ids:
         return
     now = datetime.now().isoformat()
@@ -328,7 +348,7 @@ def soft_delete_notes(note_ids):
         conn.commit()
 
 
-def permanent_delete_notes(note_ids):
+def permanent_delete_notes(note_ids: list[int]) -> None:
     if not note_ids:
         return
     with _connect() as conn:
@@ -345,7 +365,7 @@ def permanent_delete_notes(note_ids):
         conn.commit()
 
 
-def restore_notes(note_ids):
+def restore_notes(note_ids: list[int]) -> None:
     if not note_ids:
         return
     with _connect() as conn:
@@ -357,7 +377,7 @@ def restore_notes(note_ids):
         conn.commit()
 
 
-def set_pinned_notes(note_ids, value):
+def set_pinned_notes(note_ids: list[int], value: bool) -> None:
     if not note_ids:
         return
     with _connect() as conn:
@@ -369,7 +389,7 @@ def set_pinned_notes(note_ids, value):
         conn.commit()
 
 
-def set_favorite_notes(note_ids, value):
+def set_favorite_notes(note_ids: list[int], value: bool) -> None:
     if not note_ids:
         return
     with _connect() as conn:
@@ -381,7 +401,7 @@ def set_favorite_notes(note_ids, value):
         conn.commit()
 
 
-def move_notes_to_category(note_ids, category_id):
+def move_notes_to_category(note_ids: list[int], category_id: int | _Sentinel | None) -> None:
     if not note_ids:
         return
     effective = None if category_id is _UNSET else category_id
@@ -394,33 +414,31 @@ def move_notes_to_category(note_ids, category_id):
         conn.commit()
 
 
-def get_note_ids_by_category(cat_id):
+def get_note_ids_by_category(cat_id: int) -> list[int]:
     with _connect() as conn:
-        rows = conn.execute(
-            "SELECT id FROM notes WHERE category_id = ? AND is_deleted = 0", (cat_id,)
-        ).fetchall()
+        rows = conn.execute("SELECT id FROM notes WHERE category_id = ? AND is_deleted = 0", (cat_id,)).fetchall()
         return [r["id"] for r in rows]
 
 
-def delete_category_with_notes(cat_id):
+def delete_category_with_notes(cat_id: int) -> None:
     note_ids = get_note_ids_by_category(cat_id)
     if note_ids:
         soft_delete_notes(note_ids)
     delete_category(cat_id)
 
 
-def get_trash_count():
+def get_trash_count() -> int:
     with _connect() as conn:
         row = conn.execute("SELECT COUNT(*) as c FROM notes WHERE is_deleted = 1").fetchone()
-        return row["c"]
+        return row["c"]  # type: ignore[no-any-return]
 
 
 # --- Note Versions ---
 
-MAX_VERSIONS_PER_NOTE = 50
+MAX_VERSIONS_PER_NOTE: int = 50
 
 
-def save_version(note_id, title, content):
+def save_version(note_id: int, title: str, content: str) -> None:
     now = datetime.now().isoformat()
     with _connect() as conn:
         conn.execute(
@@ -436,7 +454,7 @@ def save_version(note_id, title, content):
         conn.commit()
 
 
-def get_note_versions(note_id):
+def get_note_versions(note_id: int) -> list[sqlite3.Row]:
     with _connect() as conn:
         return conn.execute(
             "SELECT * FROM note_versions WHERE note_id = ? ORDER BY saved_at DESC",
@@ -444,7 +462,7 @@ def get_note_versions(note_id):
         ).fetchall()
 
 
-def restore_version(note_id, version_id):
+def restore_version(note_id: int, version_id: int) -> None:
     with _connect() as conn:
         ver = conn.execute("SELECT * FROM note_versions WHERE id = ?", (version_id,)).fetchone()
         if ver:
@@ -456,7 +474,7 @@ def restore_version(note_id, version_id):
             conn.commit()
 
 
-def delete_note_versions(note_id):
+def delete_note_versions(note_id: int) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM note_versions WHERE note_id = ?", (note_id,))
         conn.commit()
@@ -464,7 +482,8 @@ def delete_note_versions(note_id):
 
 # --- Encryption helpers ---
 
-def set_note_encrypted(note_id, encrypted_content, is_encrypted=True):
+
+def set_note_encrypted(note_id: int, encrypted_content: str, is_encrypted: bool = True) -> None:
     now = datetime.now().isoformat()
     with _connect() as conn:
         conn.execute(
@@ -476,29 +495,32 @@ def set_note_encrypted(note_id, encrypted_content, is_encrypted=True):
 
 # --- Tags ---
 
-def get_all_tags():
+
+def get_all_tags() -> list[sqlite3.Row]:
     with _connect() as conn:
         return conn.execute("SELECT * FROM tags ORDER BY name").fetchall()
 
 
-def add_tag(name):
+def add_tag(name: str) -> int:
     with _connect() as conn:
         try:
             cur = conn.execute("INSERT INTO tags (name) VALUES (?)", (name,))
             tag_id = cur.lastrowid
             conn.commit()
         except sqlite3.IntegrityError:
-            tag_id = conn.execute("SELECT id FROM tags WHERE name = ?", (name,)).fetchone()["id"]
-        return tag_id
+            row = conn.execute("SELECT id FROM tags WHERE name = ?", (name,)).fetchone()
+            tag_id = row["id"] if row else 0
+        assert tag_id is not None
+        return int(tag_id)
 
 
-def delete_tag(tag_id):
+def delete_tag(tag_id: int) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
         conn.commit()
 
 
-def get_note_tags(note_id):
+def get_note_tags(note_id: int) -> list[sqlite3.Row]:
     with _connect() as conn:
         return conn.execute(
             "SELECT t.* FROM tags t JOIN note_tags nt ON t.id = nt.tag_id WHERE nt.note_id = ? ORDER BY t.name",
@@ -506,7 +528,7 @@ def get_note_tags(note_id):
         ).fetchall()
 
 
-def set_note_tags(note_id, tag_ids):
+def set_note_tags(note_id: int, tag_ids: list[int]) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM note_tags WHERE note_id = ?", (note_id,))
         for tid in tag_ids:
@@ -516,14 +538,13 @@ def set_note_tags(note_id, tag_ids):
 
 # --- Attachments ---
 
-def get_note_attachments(note_id):
+
+def get_note_attachments(note_id: int) -> list[sqlite3.Row]:
     with _connect() as conn:
-        return conn.execute(
-            "SELECT * FROM attachments WHERE note_id = ? ORDER BY added_at DESC", (note_id,)
-        ).fetchall()
+        return conn.execute("SELECT * FROM attachments WHERE note_id = ? ORDER BY added_at DESC", (note_id,)).fetchall()
 
 
-def add_attachment(note_id, source_path):
+def add_attachment(note_id: int, source_path: str) -> str:
     import shutil
     import uuid
 
@@ -543,7 +564,7 @@ def add_attachment(note_id, source_path):
     return filename
 
 
-def delete_attachment(att_id):
+def delete_attachment(att_id: int) -> None:
     with _connect() as conn:
         att = conn.execute("SELECT filename FROM attachments WHERE id = ?", (att_id,)).fetchone()
         if att:
@@ -556,8 +577,10 @@ def delete_attachment(att_id):
 
 # --- Backup ---
 
-def create_backup(dest_dir=None):
+
+def create_backup(dest_dir: str | None = None) -> str:
     import shutil
+
     if dest_dir is None:
         dest_dir = BACKUP_DIR
     os.makedirs(dest_dir, exist_ok=True)
@@ -568,7 +591,7 @@ def create_backup(dest_dir=None):
     return backup_path
 
 
-def get_backups(backup_dir=None):
+def get_backups(backup_dir: str | None = None) -> list[dict[str, Any]]:
     bdir = backup_dir or BACKUP_DIR
     if not os.path.exists(bdir):
         return []
@@ -584,21 +607,24 @@ def get_backups(backup_dir=None):
                 date_str = ts.strftime("%d/%m/%Y %H:%M:%S")
             except ValueError:
                 date_str = ""
-            backups.append({
-                "filename": f,
-                "path": path,
-                "size": size,
-                "date_str": date_str,
-                "encrypted": f.endswith(".db.enc"),
-            })
+            backups.append(
+                {
+                    "filename": f,
+                    "path": path,
+                    "size": size,
+                    "date_str": date_str,
+                    "encrypted": f.endswith(".db.enc"),
+                }
+            )
     return backups
 
 
 # --- Export / Import (.mynote) ---
 
-def export_note(note_id, dest_path):
-    import zipfile
+
+def export_note(note_id: int, dest_path: str) -> str:
     import json
+    import zipfile
 
     note = get_note(note_id)
     if not note:
@@ -629,11 +655,11 @@ def export_note(note_id, dest_path):
     return dest_path
 
 
-def import_note(source_path, category_id=None):
-    import zipfile
+def import_note(source_path: str, category_id: int | None = None) -> int:
     import json
     import shutil
     import uuid
+    import zipfile
 
     with zipfile.ZipFile(source_path, "r") as zf:
         meta = json.loads(zf.read("note.json"))
@@ -643,8 +669,7 @@ def import_note(source_path, category_id=None):
         with _connect() as conn:
             conn.execute(
                 "UPDATE notes SET is_pinned = ?, is_favorite = ?, is_encrypted = ? WHERE id = ?",
-                (meta.get("is_pinned", 0), meta.get("is_favorite", 0),
-                 meta.get("is_encrypted", 0), note_id),
+                (meta.get("is_pinned", 0), meta.get("is_favorite", 0), meta.get("is_encrypted", 0), note_id),
             )
             conn.commit()
 

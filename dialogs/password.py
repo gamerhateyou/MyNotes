@@ -1,15 +1,21 @@
 """Password input dialog."""
 
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                                QLineEdit, QPushButton, QMessageBox)
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QKeyEvent
 
 
 class PasswordDialog(QDialog):
-    def __init__(self, parent, title="Password", confirm=False):
+    def __init__(self, parent: QWidget, title: str = "Password", confirm: bool = False) -> None:
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.result = None
+        self.result: str | None = None  # type: ignore[assignment]
         self.setFixedWidth(350)
         self.setModal(True)
 
@@ -18,15 +24,15 @@ class PasswordDialog(QDialog):
 
         layout.addWidget(QLabel("Password:"))
         self.pw_entry = QLineEdit()
-        self.pw_entry.setEchoMode(QLineEdit.Password)
+        self.pw_entry.setEchoMode(QLineEdit.EchoMode.Password)
         layout.addWidget(self.pw_entry)
         self.pw_entry.setFocus()
 
-        self.pw_confirm = None
+        self.pw_confirm: QLineEdit | None = None
         if confirm:
             layout.addWidget(QLabel("Conferma password:"))
             self.pw_confirm = QLineEdit()
-            self.pw_confirm.setEchoMode(QLineEdit.Password)
+            self.pw_confirm.setEchoMode(QLineEdit.EchoMode.Password)
             layout.addWidget(self.pw_confirm)
 
         btn_layout = QHBoxLayout()
@@ -41,22 +47,21 @@ class PasswordDialog(QDialog):
 
         self.exec()
 
-    def _on_ok(self):
+    def _on_ok(self) -> None:
         pw = self.pw_entry.text().strip()
         if not pw:
             QMessageBox.warning(self, "Attenzione", "Inserisci una password.")
             return
-        if self.pw_confirm is not None:
-            if pw != self.pw_confirm.text().strip():
-                QMessageBox.warning(self, "Attenzione", "Le password non coincidono.")
-                return
+        if self.pw_confirm is not None and pw != self.pw_confirm.text().strip():
+            QMessageBox.warning(self, "Attenzione", "Le password non coincidono.")
+            return
         self.result = pw
         self.accept()
 
-    def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._on_ok()
-        elif event.key() == Qt.Key_Escape:
+        elif event.key() == Qt.Key.Key_Escape:
             self.reject()
         else:
             super().keyPressEvent(event)

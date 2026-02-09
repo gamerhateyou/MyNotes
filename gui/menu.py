@@ -1,11 +1,19 @@
 """Menu bar and keyboard shortcuts (PySide6)."""
 
-from PySide6.QtWidgets import QMenuBar
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
+
 from version import VERSION
 
+if TYPE_CHECKING:
+    from gui import MyNotesApp
 
-def build_menu(app):
+
+def build_menu(app: MyNotesApp) -> None:
     menubar = app.menuBar()
 
     # --- File ---
@@ -32,9 +40,14 @@ def build_menu(app):
 
     # --- Nota ---
     note_menu = menubar.addMenu("Nota")
-    note_menu.addAction(_action(app, "Apri in finestra separata",
-                                lambda: app.open_in_window(app.current_note_id) if app.current_note_id else None,
-                                "Ctrl+O"))
+    note_menu.addAction(
+        _action(
+            app,
+            "Apri in finestra separata",
+            lambda: app.open_in_window(app.current_note_id) if app.current_note_id else None,
+            "Ctrl+O",
+        )
+    )
     note_menu.addSeparator()
     note_menu.addAction(_action(app, "Fissa/Sgancia nota", lambda: app.notes_ctl.toggle_pin(), "Ctrl+P"))
     note_menu.addAction(_action(app, "Preferita/Non preferita", lambda: app.notes_ctl.toggle_favorite(), "Ctrl+D"))
@@ -52,7 +65,9 @@ def build_menu(app):
     note_menu.addAction(_action(app, "Importa audio...", lambda: app.media_ctl.import_audio()))
     note_menu.addSeparator()
     note_menu.addAction(_action(app, "Screenshot intero", lambda: app.media_ctl.take_screenshot(), "Ctrl+Shift+S"))
-    note_menu.addAction(_action(app, "Screenshot regione", lambda: app.media_ctl.take_screenshot_region(), "Ctrl+Shift+R"))
+    note_menu.addAction(
+        _action(app, "Screenshot regione", lambda: app.media_ctl.take_screenshot_region(), "Ctrl+Shift+R")
+    )
     note_menu.addAction(_action(app, "Inserisci immagine...", lambda: app.media_ctl.insert_image(), "Ctrl+I"))
 
     # --- Backup ---
@@ -76,7 +91,7 @@ def build_menu(app):
     QShortcut(QKeySequence("Escape"), app, lambda: app.notes_ctl.clear_search())
 
 
-def _action(parent, text, callback, shortcut=None):
+def _action(parent: MyNotesApp, text: str, callback: Callable[..., object], shortcut: str | None = None) -> QAction:
     """Helper to create a QAction with optional shortcut."""
     action = QAction(text, parent)
     action.triggered.connect(callback)

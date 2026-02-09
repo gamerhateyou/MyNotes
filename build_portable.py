@@ -12,19 +12,22 @@ Crea una cartella dist/MyNotes/ con l'eseguibile e tutto il necessario.
 Copia quella cartella su una chiavetta USB e funziona ovunque.
 """
 
-import subprocess
-import sys
+from __future__ import annotations
+
 import os
 import platform
+import subprocess
+import sys
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DIST_DIR = os.path.join(SCRIPT_DIR, "dist")
-BUILD_DIR = os.path.join(SCRIPT_DIR, "build")
+SCRIPT_DIR: str = os.path.dirname(os.path.abspath(__file__))
+DIST_DIR: str = os.path.join(SCRIPT_DIR, "dist")
+BUILD_DIR: str = os.path.join(SCRIPT_DIR, "build")
 
 
-def check_pyinstaller():
+def check_pyinstaller() -> bool:
     try:
-        import PyInstaller
+        import PyInstaller  # noqa: F401
+
         return True
     except ImportError:
         print("PyInstaller non trovato. Installazione in corso...")
@@ -32,7 +35,7 @@ def check_pyinstaller():
         return True
 
 
-def inject_oauth_credentials():
+def inject_oauth_credentials() -> None:
     """Inject OAuth credentials from env vars into gdrive_utils.py before build."""
     client_id = os.environ.get("MYNOTES_OAUTH_CLIENT_ID", "")
     client_secret = os.environ.get("MYNOTES_OAUTH_CLIENT_SECRET", "")
@@ -41,7 +44,7 @@ def inject_oauth_credentials():
         return
 
     path = os.path.join(SCRIPT_DIR, "gdrive_utils.py")
-    with open(path, "r") as f:
+    with open(path) as f:
         content = f.read()
 
     content = content.replace(
@@ -55,79 +58,131 @@ def inject_oauth_credentials():
 
     with open(path, "w") as f:
         f.write(content)
-    print(f"OAuth credentials iniettati in gdrive_utils.py")
+    print("OAuth credentials iniettati in gdrive_utils.py")
 
 
-def build():
+def build() -> None:
     check_pyinstaller()
     inject_oauth_credentials()
 
     # PyInstaller command
     cmd = [
-        sys.executable, "-m", "PyInstaller",
-        "--name", "MyNotes",
+        sys.executable,
+        "-m",
+        "PyInstaller",
+        "--name",
+        "MyNotes",
         "--onedir",
-        "--windowed",           # no console window
-        "--noconfirm",          # overwrite without asking
-        "--clean",              # clean build cache
+        "--windowed",  # no console window
+        "--noconfirm",  # overwrite without asking
+        "--clean",  # clean build cache
         # Tell PyInstaller where to find local modules
-        "--paths", ".",
+        "--paths",
+        ".",
         # Local modules
-        "--hidden-import", "database",
-        "--hidden-import", "gui",
-        "--hidden-import", "gui.constants",
-        "--hidden-import", "gui.menu",
-        "--hidden-import", "gui.layout",
-        "--hidden-import", "gui.widgets",
-        "--hidden-import", "gui.note_controller",
-        "--hidden-import", "gui.export_controller",
-        "--hidden-import", "gui.media_controller",
-        "--hidden-import", "gui.backup_controller",
-        "--hidden-import", "gui.update_controller",
-        "--hidden-import", "gui.note_window",
-        "--hidden-import", "dialogs",
-        "--hidden-import", "image_utils",
-        "--hidden-import", "platform_utils",
-        "--hidden-import", "annotator",
-        "--hidden-import", "updater",
-        "--hidden-import", "version",
-        "--hidden-import", "crypto_utils",
-        "--hidden-import", "backup_utils",
-        "--hidden-import", "gdrive_utils",
-        "--hidden-import", "audio_utils",
-        "--hidden-import", "error_codes",
+        "--hidden-import",
+        "database",
+        "--hidden-import",
+        "gui",
+        "--hidden-import",
+        "gui.constants",
+        "--hidden-import",
+        "gui.menu",
+        "--hidden-import",
+        "gui.layout",
+        "--hidden-import",
+        "gui.widgets",
+        "--hidden-import",
+        "gui.note_controller",
+        "--hidden-import",
+        "gui.export_controller",
+        "--hidden-import",
+        "gui.media_controller",
+        "--hidden-import",
+        "gui.backup_controller",
+        "--hidden-import",
+        "gui.update_controller",
+        "--hidden-import",
+        "gui.note_window",
+        "--hidden-import",
+        "dialogs",
+        "--hidden-import",
+        "image_utils",
+        "--hidden-import",
+        "platform_utils",
+        "--hidden-import",
+        "annotator",
+        "--hidden-import",
+        "updater",
+        "--hidden-import",
+        "version",
+        "--hidden-import",
+        "crypto_utils",
+        "--hidden-import",
+        "backup_utils",
+        "--hidden-import",
+        "gdrive_utils",
+        "--hidden-import",
+        "audio_utils",
+        "--hidden-import",
+        "error_codes",
         # PySide6
-        "--collect-all", "PySide6",
-        "--hidden-import", "qdarktheme",
+        "--collect-all",
+        "PySide6",
+        "--hidden-import",
+        "qdarktheme",
         # PIL
-        "--hidden-import", "PIL",
-        "--hidden-import", "PIL.Image",
-        "--hidden-import", "PIL.ImageDraw",
-        "--hidden-import", "PIL.ImageFont",
-        "--hidden-import", "PIL.ImageGrab",
+        "--hidden-import",
+        "PIL",
+        "--hidden-import",
+        "PIL.Image",
+        "--hidden-import",
+        "PIL.ImageDraw",
+        "--hidden-import",
+        "PIL.ImageFont",
+        "--hidden-import",
+        "PIL.ImageGrab",
         # Google Drive
-        "--hidden-import", "google.oauth2.credentials",
-        "--hidden-import", "google.auth.transport.requests",
-        "--hidden-import", "google_auth_oauthlib.flow",
-        "--hidden-import", "googleapiclient.discovery",
-        "--hidden-import", "googleapiclient.http",
+        "--hidden-import",
+        "google.oauth2.credentials",
+        "--hidden-import",
+        "google.auth.transport.requests",
+        "--hidden-import",
+        "google_auth_oauthlib.flow",
+        "--hidden-import",
+        "googleapiclient.discovery",
+        "--hidden-import",
+        "googleapiclient.http",
         # Audio
-        "--hidden-import", "sounddevice",
-        "--hidden-import", "numpy",
-        "--collect-submodules", "numpy",
-        "--hidden-import", "_sounddevice_data",
+        "--hidden-import",
+        "sounddevice",
+        "--hidden-import",
+        "numpy",
+        "--collect-submodules",
+        "numpy",
+        "--hidden-import",
+        "_sounddevice_data",
         # SSL certificates
-        "--hidden-import", "certifi",
-        "--collect-data", "certifi",
+        "--hidden-import",
+        "certifi",
+        "--collect-data",
+        "certifi",
         # Stdlib dynamic imports (inside functions, PyInstaller may miss)
-        "--hidden-import", "tarfile",
-        "--hidden-import", "zipfile",
-        "--hidden-import", "wave",
+        "--hidden-import",
+        "tarfile",
+        "--hidden-import",
+        "zipfile",
+        "--hidden-import",
+        "wave",
         # PDF export
-        "--hidden-import", "reportlab",
-        "--hidden-import", "reportlab.lib.pagesizes",
-        "--hidden-import", "reportlab.pdfgen",
-        "--hidden-import", "reportlab.pdfgen.canvas",
+        "--hidden-import",
+        "reportlab",
+        "--hidden-import",
+        "reportlab.lib.pagesizes",
+        "--hidden-import",
+        "reportlab.pdfgen",
+        "--hidden-import",
+        "reportlab.pdfgen.canvas",
         # Entry point
         "main.py",
     ]

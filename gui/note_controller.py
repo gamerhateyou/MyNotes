@@ -1,24 +1,31 @@
 """Note CRUD, categories, tags, encryption, checklist, audio markers (PySide6)."""
 
-import os
-from PySide6.QtWidgets import (QMessageBox, QMenu, QListWidgetItem)
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+from PySide6.QtCore import QPoint, Qt, QTimer
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QListWidgetItem, QMenu, QMessageBox
+
 import database as db
+
+if TYPE_CHECKING:
+    from gui import MyNotesApp
 import crypto_utils
-import platform_utils
-import audio_utils
-from gui.constants import (AUTO_SAVE_MS, VERSION_SAVE_EVERY,
-                           FG_PRIMARY, FG_ON_ACCENT,
-                           ACCENT, DANGER, WARNING, SELECT_BG, SELECT_FG)
-from gui.formatting import apply_checklist_formatting, apply_audio_formatting
-from dialogs import (CategoryDialog, NoteDialog, TagManagerDialog, AttachmentDialog,
-                     VersionHistoryDialog, PasswordDialog)
+from dialogs import AttachmentDialog, CategoryDialog, NoteDialog, PasswordDialog, TagManagerDialog, VersionHistoryDialog
+from gui.constants import (
+    AUTO_SAVE_MS,
+    DANGER,
+    VERSION_SAVE_EVERY,
+    WARNING,
+)
+from gui.formatting import apply_audio_formatting, apply_checklist_formatting
 
 
 class NoteController:
-    def __init__(self, app):
+    def __init__(self, app: MyNotesApp) -> None:
         self.app = app
         self.app.text_editor.set_app(app)
         # Connect drag-and-drop signal from category list
@@ -29,7 +36,7 @@ class NoteController:
 
     # --- Data Loading ---
 
-    def load_categories(self):
+    def load_categories(self) -> None:
         app = self.app
         app.cat_listbox.clear()
 
@@ -65,7 +72,7 @@ class NoteController:
         app.tag_combo.blockSignals(False)
         app.all_tags = all_tags
 
-    def load_notes(self, preserve_selection=True):
+    def load_notes(self, preserve_selection: bool = True) -> None:
         app = self.app
         prev_note_id = app.current_note_id if preserve_selection else None
 
@@ -90,7 +97,7 @@ class NoteController:
             if note["is_encrypted"]:
                 prefix += "[E] "
             item = QListWidgetItem(f"{prefix}{note['title']}  [{date_str}]")
-            item.setData(Qt.UserRole, note["id"])
+            item.setData(Qt.ItemDataRole.UserRole, note["id"])
             app.note_listbox.addItem(item)
 
         header = "Cestino" if app.show_trash else ("Preferite" if app.show_favorites else "Note")
@@ -113,7 +120,7 @@ class NoteController:
 
     # --- Event Handlers ---
 
-    def _flush_save(self):
+    def _flush_save(self) -> None:
         """Stop pending autosave timer and save immediately."""
         app = self.app
         if app._save_job:
@@ -121,7 +128,7 @@ class NoteController:
             app._save_job = None
         self.save_current()
 
-    def on_category_select(self):
+    def on_category_select(self) -> None:
         app = self.app
         row = app.cat_listbox.currentRow()
         if row < 0:
@@ -141,7 +148,7 @@ class NoteController:
         self._flush_save()
         self.load_notes()
 
-    def on_note_click(self, item):
+    def on_note_click(self, item: QListWidgetItem | None) -> None:
         """Handle user click on a note list item."""
         if not item:
             return
@@ -151,49 +158,49 @@ class NoteController:
             self._clear_editor()
             self.app.statusBar().showMessage(f"{len(items)} note selezionate")
             return
-        note_id = item.data(Qt.UserRole)
+        note_id = item.data(Qt.ItemDataRole.UserRole)
         if note_id is not None:
             self.display_note(note_id)
 
-    def on_note_select(self):
+    def on_note_select(self) -> None:
         """Used by show_context_menu() for programmatic single-note selection."""
         items = self.app.note_listbox.selectedItems()
         if not items:
             return
         if len(items) == 1:
-            note_id = items[0].data(Qt.UserRole)
+            note_id = items[0].data(Qt.ItemDataRole.UserRole)
             if note_id is not None:
                 self.display_note(note_id)
 
-    def focus_search(self):
+    def focus_search(self) -> None:
         self.app.search_entry.setFocus()
         self.app.search_entry.selectAll()
 
-    def clear_search(self):
+    def clear_search(self) -> None:
         if self.app.search_entry.text():
             self.app.search_entry.clear()
         else:
             self.app.text_editor.setFocus()
 
-    def on_search(self):
+    def on_search(self) -> None:
         self._flush_save()
         self.load_notes()
 
-    def on_tag_filter(self):
+    def on_tag_filter(self) -> None:
         app = self.app
         idx = app.tag_combo.currentIndex()
         app.current_tag_id = None if idx <= 0 else app.all_tags[idx - 1]["id"]
         self._flush_save()
         self.load_notes()
 
-    def on_note_double_click(self, item):
-        note_id = item.data(Qt.UserRole)
+    def on_note_double_click(self, item: QListWidgetItem) -> None:
+        note_id = item.data(Qt.ItemDataRole.UserRole)
         if note_id is not None:
             self.app.open_in_window(note_id)
 
     # --- Drag-and-Drop ---
 
-    def _on_notes_dropped(self, indices, target_row):
+    def _on_notes_dropped(self, indices: list[int], target_row: int) -> None:
         """Handle notes dropped onto category list."""
         app = self.app
         if target_row < 0:
@@ -205,10 +212,7 @@ class NoteController:
             return
 
         # Determine target category_id
-        if target_row == 0:
-            target_id = db._UNSET
-        else:
-            target_id = app.categories[target_row - 2]["id"]
+        target_id = db._UNSET if target_row == 0 else app.categories[target_row - 2]["id"]
 
         # Move all selected notes
         self.save_current()
@@ -225,7 +229,7 @@ class NoteController:
 
     # --- Editor ---
 
-    def display_note(self, note_id):
+    def display_note(self, note_id: int) -> None:
         app = self.app
         if note_id in app._detached_windows:
             return
@@ -285,7 +289,7 @@ class NoteController:
 
         app.media_ctl.load_gallery(note_id)
 
-    def _clear_editor(self):
+    def _clear_editor(self) -> None:
         app = self.app
         app.current_note_id = None
         app.editor_stack.setCurrentIndex(0)
@@ -303,11 +307,11 @@ class NoteController:
         layout = app.gallery_inner_layout
         while layout.count() > 0:
             child = layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+            if child is not None and child.widget():
+                child.widget().deleteLater()  # type: ignore[union-attr]
         layout.addStretch()
 
-    def schedule_save(self):
+    def schedule_save(self) -> None:
         app = self.app
         if app._save_job:
             app._save_job.stop()
@@ -317,7 +321,7 @@ class NoteController:
         timer.start(AUTO_SAVE_MS)
         app._save_job = timer
 
-    def save_current(self):
+    def save_current(self) -> None:
         app = self.app
         app._save_job = None
         if app.current_note_id is None:
@@ -347,9 +351,9 @@ class NoteController:
             db.update_note(app.current_note_id, title=title, content=content)
 
         # Update list item text (safe: no currentRowChanged connected)
-        items = app.note_listbox.findItems("*", Qt.MatchWildcard)
+        items = app.note_listbox.findItems("*", Qt.MatchFlag.MatchWildcard)
         for item in items:
-            if item.data(Qt.UserRole) == app.current_note_id:
+            if item.data(Qt.ItemDataRole.UserRole) == app.current_note_id:
                 date_str = datetime.now().isoformat()[:10]
                 prefix = ""
                 if note["is_pinned"]:
@@ -365,7 +369,7 @@ class NoteController:
 
     # --- Context Menu ---
 
-    def show_category_context_menu(self, pos):
+    def show_category_context_menu(self, pos: QPoint) -> None:
         app = self.app
         item = app.cat_listbox.itemAt(pos)
         if not item:
@@ -385,19 +389,19 @@ class NoteController:
             menu.addAction("Svuota categoria", self.empty_category)
             # Submenu "Sposta note in"
             move_menu = menu.addMenu("Sposta note in")
-            move_menu.addAction("Nessuna categoria",
-                                lambda cid=cat_id: self._move_category_notes_to(cid, db._UNSET))
+            move_menu.addAction("Nessuna categoria", lambda cid=cat_id: self._move_category_notes_to(cid, db._UNSET))
             for cat in app.categories:
                 if cat["id"] != cat_id:
                     move_menu.addAction(
                         cat["name"],
-                        lambda from_id=cat_id, to_id=cat["id"]: self._move_category_notes_to(from_id, to_id))
+                        lambda from_id=cat_id, to_id=cat["id"]: self._move_category_notes_to(from_id, to_id),
+                    )
             menu.addSeparator()
 
         menu.addAction("Nuova Categoria", self.new_category)
         menu.popup(app.cat_listbox.mapToGlobal(pos))
 
-    def show_context_menu(self, pos):
+    def show_context_menu(self, pos: QPoint) -> None:
         app = self.app
         item = app.note_listbox.itemAt(pos)
         if not item:
@@ -421,6 +425,8 @@ class NoteController:
         app.note_listbox.setCurrentRow(idx)
         self.on_note_select()
 
+        if app.current_note_id is None:
+            return
         note = db.get_note(app.current_note_id)
         if not note:
             return
@@ -431,8 +437,7 @@ class NoteController:
             menu.addAction("Ripristina", self._restore_from_trash)
             menu.addAction("Elimina definitivamente", self._permanent_delete)
         else:
-            menu.addAction("Apri in finestra",
-                           lambda nid=app.current_note_id: app.open_in_window(nid))
+            menu.addAction("Apri in finestra", lambda nid=app.current_note_id: app.open_in_window(nid))
             menu.addSeparator()
             pin_label = "Sgancia" if note["is_pinned"] else "Fissa in cima"
             fav_label = "Rimuovi dai preferiti" if note["is_favorite"] else "Aggiungi ai preferiti"
@@ -465,7 +470,7 @@ class NoteController:
 
         menu.popup(app.note_listbox.mapToGlobal(pos))
 
-    def _restore_from_trash(self):
+    def _restore_from_trash(self) -> None:
         if self.app.current_note_id is None:
             return
         db.restore_note(self.app.current_note_id)
@@ -473,15 +478,21 @@ class NoteController:
         self.load_categories()
         self.load_notes()
 
-    def _permanent_delete(self):
+    def _permanent_delete(self) -> None:
         app = self.app
         if app.current_note_id is None:
             return
         note = db.get_note(app.current_note_id)
-        if QMessageBox.question(
-            app, "Conferma",
-            f"Eliminare '{note['title']}' definitivamente?\nQuesta azione non puo' essere annullata."
-        ) == QMessageBox.Yes:
+        if note is None:
+            return
+        if (
+            QMessageBox.question(
+                app,
+                "Conferma",
+                f"Eliminare '{note['title']}' definitivamente?\nQuesta azione non puo' essere annullata.",
+            )
+            == QMessageBox.StandardButton.Yes
+        ):
             db.permanent_delete_note(app.current_note_id)
             app.current_note_id = None
             self.load_categories()
@@ -489,40 +500,30 @@ class NoteController:
 
     # --- Multi-select actions ---
 
-    def _build_multi_context_menu(self, menu, sel):
+    def _build_multi_context_menu(self, menu: QMenu, sel: list[int]) -> None:
         n = len(sel)
         app = self.app
         if app.show_trash:
-            menu.addAction(f"Ripristina {n} note",
-                           lambda: self._restore_multiple(sel))
-            menu.addAction(f"Elimina definitivamente {n} note",
-                           lambda: self._permanent_delete_multiple(sel))
+            menu.addAction(f"Ripristina {n} note", lambda: self._restore_multiple(sel))
+            menu.addAction(f"Elimina definitivamente {n} note", lambda: self._permanent_delete_multiple(sel))
         else:
-            menu.addAction(f"Fissa {n} note",
-                           lambda: self._pin_multiple(sel, True))
-            menu.addAction(f"Sgancia {n} note",
-                           lambda: self._pin_multiple(sel, False))
+            menu.addAction(f"Fissa {n} note", lambda: self._pin_multiple(sel, True))
+            menu.addAction(f"Sgancia {n} note", lambda: self._pin_multiple(sel, False))
             menu.addSeparator()
-            menu.addAction(f"Aggiungi {n} note ai preferiti",
-                           lambda: self._favorite_multiple(sel, True))
-            menu.addAction(f"Rimuovi {n} note dai preferiti",
-                           lambda: self._favorite_multiple(sel, False))
+            menu.addAction(f"Aggiungi {n} note ai preferiti", lambda: self._favorite_multiple(sel, True))
+            menu.addAction(f"Rimuovi {n} note dai preferiti", lambda: self._favorite_multiple(sel, False))
             menu.addSeparator()
             move_menu = menu.addMenu("Sposta in")
-            move_menu.addAction("Nessuna categoria",
-                                lambda: self._move_multiple_to_category(sel, db._UNSET))
+            move_menu.addAction("Nessuna categoria", lambda: self._move_multiple_to_category(sel, db._UNSET))
             for cat in app.categories:
-                move_menu.addAction(cat["name"],
-                                    lambda cid=cat["id"]: self._move_multiple_to_category(sel, cid))
+                move_menu.addAction(cat["name"], lambda cid=cat["id"]: self._move_multiple_to_category(sel, cid))
             menu.addSeparator()
-            menu.addAction(f"Sposta {n} note nel cestino",
-                           lambda: self._soft_delete_multiple(sel))
+            menu.addAction(f"Sposta {n} note nel cestino", lambda: self._soft_delete_multiple(sel))
 
-    def _soft_delete_multiple(self, sel):
+    def _soft_delete_multiple(self, sel: list[int]) -> None:
         app = self.app
         n = len(sel)
-        if QMessageBox.question(app, "Conferma",
-                                f"Spostare {n} note nel cestino?") != QMessageBox.Yes:
+        if QMessageBox.question(app, "Conferma", f"Spostare {n} note nel cestino?") != QMessageBox.StandardButton.Yes:
             return
         self.save_current()
         ids = [app.notes[i]["id"] for i in sel if i < len(app.notes)]
@@ -531,13 +532,15 @@ class NoteController:
         self.load_categories()
         self.load_notes()
 
-    def _permanent_delete_multiple(self, sel):
+    def _permanent_delete_multiple(self, sel: list[int]) -> None:
         app = self.app
         n = len(sel)
-        if QMessageBox.question(
-            app, "Conferma",
-            f"Eliminare definitivamente {n} note?\nQuesta azione non puo' essere annullata."
-        ) != QMessageBox.Yes:
+        if (
+            QMessageBox.question(
+                app, "Conferma", f"Eliminare definitivamente {n} note?\nQuesta azione non puo' essere annullata."
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return
         self.save_current()
         ids = [app.notes[i]["id"] for i in sel if i < len(app.notes)]
@@ -546,7 +549,7 @@ class NoteController:
         self.load_categories()
         self.load_notes()
 
-    def _restore_multiple(self, sel):
+    def _restore_multiple(self, sel: list[int]) -> None:
         app = self.app
         ids = [app.notes[i]["id"] for i in sel if i < len(app.notes)]
         db.restore_notes(ids)
@@ -554,17 +557,17 @@ class NoteController:
         self.load_categories()
         self.load_notes()
 
-    def _pin_multiple(self, sel, value):
+    def _pin_multiple(self, sel: list[int], value: bool) -> None:
         ids = [self.app.notes[i]["id"] for i in sel if i < len(self.app.notes)]
         db.set_pinned_notes(ids, value)
         self.load_notes()
 
-    def _favorite_multiple(self, sel, value):
+    def _favorite_multiple(self, sel: list[int], value: bool) -> None:
         ids = [self.app.notes[i]["id"] for i in sel if i < len(self.app.notes)]
         db.set_favorite_notes(ids, value)
         self.load_notes()
 
-    def _move_multiple_to_category(self, sel, cat_id):
+    def _move_multiple_to_category(self, sel: list[int], cat_id: int | db._Sentinel) -> None:
         self.save_current()
         ids = [self.app.notes[i]["id"] for i in sel if i < len(self.app.notes)]
         db.move_notes_to_category(ids, cat_id)
@@ -572,7 +575,7 @@ class NoteController:
         self.load_categories()
         self.load_notes()
 
-    def empty_category(self):
+    def empty_category(self) -> None:
         app = self.app
         if app.current_category_id is None:
             QMessageBox.information(app, "Info", "Seleziona una categoria dalla sidebar.")
@@ -584,10 +587,12 @@ class NoteController:
         if not note_ids:
             QMessageBox.information(app, "Info", f"La categoria '{cat['name']}' e' gia' vuota.")
             return
-        if QMessageBox.question(
-            app, "Svuota Categoria",
-            f"Spostare {len(note_ids)} nota/e di '{cat['name']}' nel cestino?"
-        ) != QMessageBox.Yes:
+        if (
+            QMessageBox.question(
+                app, "Svuota Categoria", f"Spostare {len(note_ids)} nota/e di '{cat['name']}' nel cestino?"
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return
         self.save_current()
         db.soft_delete_notes(note_ids)
@@ -595,7 +600,7 @@ class NoteController:
         self.load_categories()
         self.load_notes()
 
-    def _move_category_notes_to(self, from_cat_id, to_cat_id):
+    def _move_category_notes_to(self, from_cat_id: int, to_cat_id: int | db._Sentinel) -> None:
         note_ids = db.get_note_ids_by_category(from_cat_id)
         if not note_ids:
             QMessageBox.information(self.app, "Info", "La categoria e' vuota.")
@@ -608,7 +613,7 @@ class NoteController:
 
     # --- Checklist ---
 
-    def insert_checklist(self):
+    def insert_checklist(self) -> None:
         if self.app.current_note_id is None:
             QMessageBox.information(self.app, "Info", "Seleziona una nota prima.")
             return
@@ -616,13 +621,13 @@ class NoteController:
         cursor.insertText("\n[ ] Elemento da fare\n[ ] Altro elemento\n[x] Elemento completato\n")
         self._apply_checklist_formatting()
 
-    def _apply_checklist_formatting(self):
+    def _apply_checklist_formatting(self) -> None:
         apply_checklist_formatting(self.app.text_editor)
 
-    def _apply_audio_formatting(self):
+    def _apply_audio_formatting(self) -> None:
         apply_audio_formatting(self.app.text_editor)
 
-    def insert_audio_marker(self, att_filename, description):
+    def insert_audio_marker(self, att_filename: str, description: str) -> None:
         """Inserisce un marker audio alla posizione del cursore."""
         if self.app.current_note_id is None:
             return
@@ -636,7 +641,7 @@ class NoteController:
 
     # --- Note Actions ---
 
-    def new_note(self):
+    def new_note(self) -> None:
         app = self.app
         categories = db.get_all_categories()
         dlg = NoteDialog(app, categories)
@@ -647,13 +652,13 @@ class NoteController:
             self.load_notes()
             for i in range(app.note_listbox.count()):
                 item = app.note_listbox.item(i)
-                if item.data(Qt.UserRole) == note_id:
+                if item.data(Qt.ItemDataRole.UserRole) == note_id:
                     app.note_listbox.setCurrentRow(i)
                     self.display_note(note_id)
                     break
             app.text_editor.setFocus()
 
-    def delete_note(self):
+    def delete_note(self) -> None:
         app = self.app
         selected_items = app.note_listbox.selectedItems()
         if not selected_items:
@@ -673,37 +678,38 @@ class NoteController:
         if app.current_note_id is None:
             return
         note = db.get_note(app.current_note_id)
+        if note is None:
+            return
         if app.show_trash:
             btn = QMessageBox.question(
-                app, "Cestino",
+                app,
+                "Cestino",
                 f"'{note['title']}'\n\nEliminare definitivamente o ripristinare?",
-                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-                QMessageBox.Cancel
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
             )
-            if btn == QMessageBox.Yes:
+            if btn == QMessageBox.StandardButton.Yes:
                 db.permanent_delete_note(app.current_note_id)
-            elif btn == QMessageBox.No:
+            elif btn == QMessageBox.StandardButton.No:
                 db.restore_note(app.current_note_id)
             else:
                 return
         else:
-            if QMessageBox.question(
-                app, "Conferma",
-                f"Spostare '{note['title']}' nel cestino?"
-            ) != QMessageBox.Yes:
+            reply = QMessageBox.question(app, "Conferma", f"Spostare '{note['title']}' nel cestino?")
+            if reply != QMessageBox.StandardButton.Yes:
                 return
             db.soft_delete_note(app.current_note_id)
         app.current_note_id = None
         self.load_categories()
         self.load_notes()
 
-    def toggle_pin(self):
+    def toggle_pin(self) -> None:
         if self.app.current_note_id is None:
             return
         db.toggle_pin(self.app.current_note_id)
         self.load_notes()
 
-    def toggle_favorite(self):
+    def toggle_favorite(self) -> None:
         if self.app.current_note_id is None:
             return
         db.toggle_favorite(self.app.current_note_id)
@@ -711,13 +717,13 @@ class NoteController:
 
     # --- Categories ---
 
-    def new_category(self):
+    def new_category(self) -> None:
         dlg = CategoryDialog(self.app, title="Nuova Categoria")
         if dlg.result:
             db.add_category(dlg.result)
             self.load_categories()
 
-    def rename_category(self):
+    def rename_category(self) -> None:
         app = self.app
         if app.current_category_id is None:
             QMessageBox.information(app, "Info", "Seleziona una categoria dalla sidebar.")
@@ -730,7 +736,7 @@ class NoteController:
             db.rename_category(app.current_category_id, dlg.result)
             self.load_categories()
 
-    def delete_category(self):
+    def delete_category(self) -> None:
         app = self.app
         if app.current_category_id is None:
             QMessageBox.information(app, "Info", "Seleziona una categoria dalla sidebar.")
@@ -742,25 +748,24 @@ class NoteController:
         note_ids = db.get_note_ids_by_category(app.current_category_id)
         if note_ids:
             btn = QMessageBox.question(
-                app, "Elimina Categoria",
+                app,
+                "Elimina Categoria",
                 f"La categoria '{cat['name']}' contiene {len(note_ids)} nota/e.\n\n"
                 f"Si = Elimina categoria e sposta note nel cestino\n"
                 f"No = Elimina solo la categoria (le note restano)\n"
                 f"Annulla = Non fare nulla",
-                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-                QMessageBox.Cancel
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
             )
-            if btn == QMessageBox.Yes:
+            if btn == QMessageBox.StandardButton.Yes:
                 db.delete_category_with_notes(app.current_category_id)
-            elif btn == QMessageBox.No:
+            elif btn == QMessageBox.StandardButton.No:
                 db.delete_category(app.current_category_id)
             else:
                 return
         else:
-            if QMessageBox.question(
-                app, "Conferma",
-                f"Eliminare la categoria '{cat['name']}'?"
-            ) != QMessageBox.Yes:
+            reply = QMessageBox.question(app, "Conferma", f"Eliminare la categoria '{cat['name']}'?")
+            if reply != QMessageBox.StandardButton.Yes:
                 return
             db.delete_category(app.current_category_id)
 
@@ -770,14 +775,14 @@ class NoteController:
 
     # --- Tags & Attachments ---
 
-    def manage_tags(self):
+    def manage_tags(self) -> None:
         if self.app.current_note_id is None:
             return
         TagManagerDialog(self.app, self.app.current_note_id)
         self.display_note(self.app.current_note_id)
         self.load_categories()
 
-    def manage_attachments(self):
+    def manage_attachments(self) -> None:
         if self.app.current_note_id is None:
             return
         AttachmentDialog(self.app, self.app.current_note_id)
@@ -785,7 +790,7 @@ class NoteController:
 
     # --- Version History ---
 
-    def show_versions(self):
+    def show_versions(self) -> None:
         app = self.app
         if app.current_note_id is None:
             return
@@ -793,8 +798,7 @@ class NoteController:
         if not note:
             return
         if note["is_encrypted"]:
-            QMessageBox.information(app, "Info",
-                                    "La cronologia versioni non e' disponibile per le note criptate.")
+            QMessageBox.information(app, "Info", "La cronologia versioni non e' disponibile per le note criptate.")
             return
         content = app.text_editor.toPlainText()
         db.save_version(app.current_note_id, note["title"], content)
@@ -804,7 +808,7 @@ class NoteController:
 
     # --- Inline Decrypt ---
 
-    def _inline_decrypt(self):
+    def _inline_decrypt(self) -> None:
         app = self.app
         if app.current_note_id is None:
             return
@@ -827,11 +831,13 @@ class NoteController:
 
     # --- Encryption ---
 
-    def encrypt_note(self):
+    def encrypt_note(self) -> None:
         app = self.app
         if app.current_note_id is None:
             return
         note = db.get_note(app.current_note_id)
+        if note is None:
+            return
         if note["is_encrypted"]:
             QMessageBox.information(app, "Info", "La nota e' gia' criptata.")
             return
@@ -846,11 +852,13 @@ class NoteController:
             self.display_note(app.current_note_id)
             app.statusBar().showMessage("Nota criptata")
 
-    def decrypt_note(self):
+    def decrypt_note(self) -> None:
         app = self.app
         if app.current_note_id is None:
             return
         note = db.get_note(app.current_note_id)
+        if note is None:
+            return
         if not note["is_encrypted"]:
             QMessageBox.information(app, "Info", "La nota non e' criptata.")
             return
@@ -863,16 +871,17 @@ class NoteController:
                 return
 
             btn = QMessageBox.question(
-                app, "Decripta",
+                app,
+                "Decripta",
                 "Nota decriptata!\n\nSi = Rimuovi crittografia permanentemente\n"
                 "No = Visualizza solo (resta criptata)\nAnnulla = Chiudi",
-                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
-                QMessageBox.Cancel
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
             )
-            if btn == QMessageBox.Yes:
+            if btn == QMessageBox.StandardButton.Yes:
                 db.set_note_encrypted(app.current_note_id, decrypted, False)
                 app._decrypted_cache.pop(app.current_note_id, None)
-            elif btn == QMessageBox.No:
+            elif btn == QMessageBox.StandardButton.No:
                 app._decrypted_cache[app.current_note_id] = decrypted
             else:
                 return

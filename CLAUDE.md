@@ -1,44 +1,70 @@
 # MyNotes
 
 ## Architettura
-- App desktop Python/Tkinter con SQLite locale, portabile e cross-platform (Windows + Linux)
-- Pattern MVC: `database.py` (model con context manager `_connect()`), `gui/` package (controller per area), `dialogs.py` (dialog views)
-- `gui/`: `__init__.py` (app principale), `constants.py`, `layout.py`, `menu.py`, `note_controller.py`, `export_controller.py`, `media_controller.py`, `backup_controller.py`, `update_controller.py`
+- App desktop Python/PySide6 con SQLite locale, portabile e cross-platform (Windows + Linux)
+- Pattern MVC: `database.py` (model con context manager `_connect()`), `gui/` package (controller per area), `dialogs/` package (dialog views)
+- `gui/`: `__init__.py` (app principale `MyNotesApp`), `constants.py`, `layout.py`, `menu.py`, `widgets.py`, `formatting.py`, `note_controller.py`, `export_controller.py`, `media_controller.py`, `backup_controller.py`, `update_controller.py`, `note_window.py`
+- `dialogs/`: `category.py`, `tags.py`, `attachments.py`, `history.py`, `audio.py`, `password.py`, `backup.py`
 - `platform_utils.py` astrae tutte le differenze OS (file opening, screenshot, fonts)
-- `image_utils.py` converte PIL -> PNG base64 -> tk.PhotoImage (workaround per ImageTk mancante)
-- `crypto_utils.py` crittografia AES con PBKDF2 (Fernet se disponibile, fallback XOR+HMAC)
-- `backup_utils.py` backup locale + Google Drive con OAuth integrato nella GUI
+- `image_utils.py` converte PIL -> QPixmap via PNG buffer
+- `crypto_utils.py` crittografia AES con PBKDF2 (Fernet via cryptography)
+- `backup_utils.py` backup locale + Google Drive (re-export da `gdrive_utils.py`) con OAuth integrato nella GUI
 - `updater.py` auto-aggiornamento da GitHub Releases, `version.py` contiene VERSION e GITHUB_REPO
+- `_types.py` type alias condivisi (`NoteRow`, `CategoryRow`, `ProgressCallback`, etc.)
+- `annotator.py` tool di annotazione immagini con QGraphicsView
 - Dati in `data/` (db + allegati + token + settings) accanto all'eseguibile, MAI sovrascritta durante update
 - Export/import note come `.mynote` (ZIP con JSON metadata + allegati)
 
 ## Comandi
 - `python3 main.py` - avvia l'app
 - `python build_portable.py` - build eseguibile standalone con PyInstaller
+- `ruff check .` - lint (zero errori richiesti)
+- `ruff format --check .` - verifica formattazione (zero diff richiesti)
+- `mypy .` - type check strict (zero errori richiesti)
 - `git tag vX.Y.Z && git push origin vX.Y.Z` - triggera GitHub Actions build + release
 
+## Quality Gates (CI)
+- `.github/workflows/build.yml` ha job `quality` che gira su ogni push/PR a `main`
+- Il job `quality` esegue: `ruff check .`, `ruff format --check .`, `mypy .`
+- Il job `build` richiede `quality` e gira solo su tag push (`v*`) o workflow_dispatch
+- Configurazione ruff e mypy in `pyproject.toml`
+- Dev dependencies in `requirements-dev.txt` (include ruff e mypy)
+
+## Type Safety
+- Tutti i 34 file Python hanno `from __future__ import annotations`
+- Tutte le ~334 funzioni sono annotate (parametri + return type)
+- mypy strict mode abilitato (`disallow_untyped_defs`, `warn_return_any`, etc.)
+- PySide6 enum access fully-qualified (es. `Qt.Key.Key_Escape`, `QMessageBox.StandardButton.Yes`)
+- Pattern `TYPE_CHECKING` per evitare circular import tra gui controllers e `MyNotesApp`
+- Sentinel tipizzato: `class _Sentinel` in `database.py` per `_UNSET`
+- Librerie senza stubs ignorate via `[[tool.mypy.overrides]]`: qdarktheme, sounddevice, reportlab, google-*, numpy, PIL, certifi
+
 ## Quirk ambiente
-- Fedora/Wayland: `ImageTk` non disponibile, usare pipeline PIL->base64->tk.PhotoImage
-- Screenshot Wayland: servono `grim` + `slurp` (`sudo dnf install grim slurp`)
+- Fedora/Wayland: Screenshot servono `grim` + `slurp` (`sudo dnf install grim slurp`)
 - Font Fedora: AdwaitaSans in `/usr/share/fonts/adwaita-sans-fonts/`
-- tkinter va installato separatamente: `sudo dnf install python3-tkinter`
+- PySide6 su Linux richiede `libegl1` e `libportaudio2` per sounddevice
 
 ## Stile codice
 - Interfaccia in italiano (label, messaggi, menu)
 - Nomi variabili/funzioni in inglese con prefisso `_` per metodi privati
-- Dipendenze: Pillow, reportlab, google-api-python-client, google-auth-oauthlib (tutte in requirements.txt)
+- ruff rules: E/W/F/I/UP/B/SIM/ANN, line-length 120, target py312
+- Dipendenze pinnate con `==` in `requirements.txt`
 - Tutti i path relativi a APP_DIR (portabilita chiavetta USB)
-- Google Drive: OAuth credentials embedded in backup_utils.py, utente clicca solo "Accedi con Google"
+- Google Drive: OAuth credentials iniettati al build da env vars, utente clicca solo "Accedi con Google"
 
 ## Gotcha critici
-- Tkinter Text widget DISABLED: `delete()`/`insert()` falliscono silenziosamente. Sempre `config(state=NORMAL)` prima di modificare
-- `save_current()` non deve leggere contenuto editor se è DISABLED (placeholder crittografia)
-- Updater: mai trattare errori di rete come "già aggiornato" - lanciare ConnectionError
+- PySide6 widget: editor usa `QPlainTextEdit`, non Tkinter Text
+- `save_current()` non deve leggere contenuto editor se nota crittografata (placeholder)
+- Updater: mai trattare errori di rete come "gia aggiornato" - lanciare ConnectionError
 - Release: NON eliminare release vecchie valide, tenerle per chi ha versioni precedenti
 - PyInstaller: usare `--hidden-import` per moduli Python, MAI `--add-data` per file .py
+- `os.startfile` solo Windows: richiede `# type: ignore[attr-defined]`
+- `self.result` nei dialog shadowa `QDialog.result()`: richiede `# type: ignore[assignment]`
+- `raise` in `except`: sempre usare `from e` o `from None` (regola B904)
 
 ## Build & Deploy
 - GitHub Actions workflow in `.github/workflows/build.yml` builda Linux + Windows
+- Job `quality` blocca la build se ruff o mypy falliscono
 - Release automatica su push tag `v*`
 - GITHUB_REPO in `version.py` impostato a "gamerhateyou/MyNotes"
 - PyInstaller include tutte le librerie Google come hidden imports

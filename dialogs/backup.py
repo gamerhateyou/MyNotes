@@ -1,37 +1,55 @@
 """Backup settings and restore dialogs."""
 
+from __future__ import annotations
+
 import os
 import threading
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                                QLineEdit, QPushButton, QCheckBox, QComboBox,
-                                QSpinBox, QMessageBox, QFileDialog, QGroupBox,
-                                QListWidget, QFrame, QWidget, QTabWidget)
-from PySide6.QtCore import Qt, QTimer
+from typing import Any
+
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 import database as db
 from dialogs.password import PasswordDialog
-from gui.constants import (UI_FONT, FONT_BASE,
-                           FG_SECONDARY, ACCENT, SUCCESS, DANGER)
+from gui.constants import DANGER, FG_SECONDARY, FONT_BASE, SUCCESS, UI_FONT
 
 
 class BackupSettingsDialog(QDialog):
-    def __init__(self, parent):
+    def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setWindowTitle("Impostazioni Backup")
         self.setMinimumWidth(500)
         self.setModal(True)
 
         import backup_utils
-        self.backup_utils = backup_utils
-        self.settings = backup_utils.get_settings()
+
+        self.backup_utils: Any = backup_utils
+        self.settings: dict[str, Any] = backup_utils.get_settings()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
 
         # --- Local Backup ---
         local_label = QLabel("Backup Locale")
-        local_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Bold))
+        local_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Weight.Bold))
         layout.addWidget(local_label)
 
         self.auto_cb = QCheckBox("Backup automatico alla chiusura")
@@ -69,11 +87,11 @@ class BackupSettingsDialog(QDialog):
 
         # --- Google Drive ---
         sep1 = QFrame()
-        sep1.setFrameShape(QFrame.HLine)
+        sep1.setFrameShape(QFrame.Shape.HLine)
         layout.addWidget(sep1)
 
         gdrive_label = QLabel("Google Drive")
-        gdrive_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Bold))
+        gdrive_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Weight.Bold))
         layout.addWidget(gdrive_label)
 
         status_layout = QHBoxLayout()
@@ -92,8 +110,7 @@ class BackupSettingsDialog(QDialog):
 
         folder_layout = QHBoxLayout()
         folder_layout.addWidget(QLabel("Nome cartella su Drive:"))
-        self.folder_entry = QLineEdit(
-            self.settings.get("gdrive_folder_name", "MyNotes Backup"))
+        self.folder_entry = QLineEdit(self.settings.get("gdrive_folder_name", "MyNotes Backup"))
         folder_layout.addWidget(self.folder_entry)
         layout.addLayout(folder_layout)
 
@@ -109,11 +126,11 @@ class BackupSettingsDialog(QDialog):
 
         # --- Crittografia ---
         sep2 = QFrame()
-        sep2.setFrameShape(QFrame.HLine)
+        sep2.setFrameShape(QFrame.Shape.HLine)
         layout.addWidget(sep2)
 
         enc_label = QLabel("Crittografia")
-        enc_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Bold))
+        enc_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Weight.Bold))
         layout.addWidget(enc_label)
 
         self.encrypt_cb = QCheckBox("Cripta backup con password")
@@ -127,38 +144,34 @@ class BackupSettingsDialog(QDialog):
         self.pw_status_label.setStyleSheet(f"color: {pw_color};")
         layout.addWidget(self.pw_status_label)
 
-        pw_note = QLabel("La password non viene salvata su disco.\n"
-                         "Viene chiesta all'avvio dell'app.")
+        pw_note = QLabel("La password non viene salvata su disco.\nViene chiesta all'avvio dell'app.")
         pw_note.setStyleSheet(f"color: {FG_SECONDARY}; font-size: 11px;")
         layout.addWidget(pw_note)
 
         # --- Scheduler ---
         sep3 = QFrame()
-        sep3.setFrameShape(QFrame.HLine)
+        sep3.setFrameShape(QFrame.Shape.HLine)
         layout.addWidget(sep3)
 
         sched_label = QLabel("Backup Automatico")
-        sched_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Bold))
+        sched_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Weight.Bold))
         layout.addWidget(sched_label)
 
         interval_layout = QHBoxLayout()
         interval_layout.addWidget(QLabel("Intervallo backup:"))
-        self._interval_labels = ["Disabilitato", "30 minuti", "1 ora", "2 ore",
-                                 "4 ore", "8 ore", "12 ore", "24 ore"]
+        self._interval_labels = ["Disabilitato", "30 minuti", "1 ora", "2 ore", "4 ore", "8 ore", "12 ore", "24 ore"]
         self._interval_values = [0, 30, 60, 120, 240, 480, 720, 1440]
         self.interval_combo = QComboBox()
         self.interval_combo.addItems(self._interval_labels)
         current_interval = self.settings.get("backup_interval_minutes", 0)
-        idx = (self._interval_values.index(current_interval)
-               if current_interval in self._interval_values else 0)
+        idx = self._interval_values.index(current_interval) if current_interval in self._interval_values else 0
         self.interval_combo.setCurrentIndex(idx)
         interval_layout.addWidget(self.interval_combo)
         interval_layout.addStretch()
         layout.addLayout(interval_layout)
 
         last_backup = self.settings.get("last_backup_time", "")
-        last_text = (f"Ultimo backup: {last_backup}"
-                     if last_backup else "Ultimo backup: mai")
+        last_text = f"Ultimo backup: {last_backup}" if last_backup else "Ultimo backup: mai"
         last_label = QLabel(last_text)
         last_label.setStyleSheet(f"color: {FG_SECONDARY};")
         layout.addWidget(last_label)
@@ -176,7 +189,7 @@ class BackupSettingsDialog(QDialog):
 
         self.exec()
 
-    def _update_gdrive_status(self):
+    def _update_gdrive_status(self) -> None:
         if self.backup_utils.is_gdrive_configured():
             self.gdrive_status_label.setText("Connesso a Google Drive")
             self.gdrive_status_label.setStyleSheet(f"color: {SUCCESS};")
@@ -186,12 +199,10 @@ class BackupSettingsDialog(QDialog):
             self.gdrive_status_label.setStyleSheet(f"color: {FG_SECONDARY};")
             self.auth_btn.setText("Accedi con Google")
 
-    def _toggle_gdrive_auth(self):
+    def _toggle_gdrive_auth(self) -> None:
         if self.backup_utils.is_gdrive_configured():
-            if QMessageBox.question(
-                self, "Disconnetti",
-                "Rimuovere l'autorizzazione Google Drive?"
-            ) == QMessageBox.Yes:
+            answer = QMessageBox.question(self, "Disconnetti", "Rimuovere l'autorizzazione Google Drive?")
+            if answer == QMessageBox.StandardButton.Yes:
                 self.backup_utils.gdrive_disconnect()
                 self.gdrive_cb.setChecked(False)
                 self._update_gdrive_status()
@@ -199,13 +210,13 @@ class BackupSettingsDialog(QDialog):
             self.auth_btn.setEnabled(False)
             self.auth_btn.setText("Autorizzazione in corso...")
 
-            def _do_auth():
+            def _do_auth() -> None:
                 success, msg = self.backup_utils.gdrive_authorize()
                 QTimer.singleShot(0, lambda: self._auth_done(success, msg))
 
             threading.Thread(target=_do_auth, daemon=True).start()
 
-    def _auth_done(self, success, msg):
+    def _auth_done(self, success: bool, msg: str) -> None:
         self.auth_btn.setEnabled(True)
         if success:
             QMessageBox.information(self, "Google Drive", msg)
@@ -213,12 +224,12 @@ class BackupSettingsDialog(QDialog):
             QMessageBox.critical(self, "Errore", msg)
         self._update_gdrive_status()
 
-    def _browse_dir(self):
+    def _browse_dir(self) -> None:
         d = QFileDialog.getExistingDirectory(self, "Cartella backup")
         if d:
             self.dir_entry.setText(d)
 
-    def _save(self):
+    def _save(self) -> None:
         self.settings["auto_backup"] = self.auto_cb.isChecked()
         self.settings["local_backup_dir"] = self.dir_entry.text()
         self.settings["max_local_backups"] = self.max_spin.value()
@@ -236,8 +247,7 @@ class BackupSettingsDialog(QDialog):
             else:
                 self.settings["encrypt_backups"] = False
 
-        self.settings["backup_interval_minutes"] = \
-            self._interval_values[self.interval_combo.currentIndex()]
+        self.settings["backup_interval_minutes"] = self._interval_values[self.interval_combo.currentIndex()]
 
         self.backup_utils.save_settings(self.settings)
         QMessageBox.information(self, "Salvato", "Impostazioni backup salvate.")
@@ -245,15 +255,16 @@ class BackupSettingsDialog(QDialog):
 
 
 class BackupRestoreDialog(QDialog):
-    def __init__(self, parent):
+    def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self.setWindowTitle("Ripristina Backup")
-        self.result = None
+        self.result: dict[str, Any] | None = None  # type: ignore[assignment]
         self.resize(650, 520)
         self.setModal(True)
 
         import backup_utils
-        self.backup_utils = backup_utils
+
+        self.backup_utils: Any = backup_utils
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
@@ -325,18 +336,16 @@ class BackupRestoreDialog(QDialog):
         # Load local backups
         settings = backup_utils.get_settings()
         backup_dir = settings.get("local_backup_dir", db.BACKUP_DIR)
-        self.backups = db.get_backups(backup_dir)
+        self.backups: list[dict[str, Any]] = db.get_backups(backup_dir)
         for b in self.backups:
             enc_label = " [crittografato]" if b["encrypted"] else ""
             size_kb = b["size"] / 1024
-            self.backup_list.addItem(
-                f"{b['date_str']}  ({size_kb:.0f} KB){enc_label}"
-            )
+            self.backup_list.addItem(f"{b['date_str']}  ({size_kb:.0f} KB){enc_label}")
         if not self.backups:
             self.backup_list.addItem("Nessun backup disponibile.")
 
         # Load GDrive backups
-        self.gdrive_backups = []
+        self.gdrive_backups: list[dict[str, Any]] = []
         if backup_utils.is_gdrive_configured():
             self.gdrive_list.addItem("Caricamento...")
             QTimer.singleShot(100, self._load_gdrive_backups)
@@ -346,7 +355,7 @@ class BackupRestoreDialog(QDialog):
 
         self.exec()
 
-    def _load_gdrive_backups(self):
+    def _load_gdrive_backups(self) -> None:
         self.gdrive_list.clear()
         self.gdrive_backups = self.backup_utils.list_gdrive_backups()
         if not self.gdrive_backups:
@@ -355,11 +364,9 @@ class BackupRestoreDialog(QDialog):
         for b in self.gdrive_backups:
             enc_label = " [crittografato]" if b["encrypted"] else ""
             size_kb = b["size"] / 1024
-            self.gdrive_list.addItem(
-                f"{b['date_str']}  ({size_kb:.0f} KB){enc_label}"
-            )
+            self.gdrive_list.addItem(f"{b['date_str']}  ({size_kb:.0f} KB){enc_label}")
 
-    def _on_local_select(self, row):
+    def _on_local_select(self, row: int) -> None:
         if row < 0 or not self.backups:
             return
         b = self.backups[row]
@@ -374,8 +381,7 @@ class BackupRestoreDialog(QDialog):
         else:
             self.detail_encrypted.setText("")
             count = self.backup_utils.get_note_count_from_backup(b["path"])
-            self.detail_notes.setText(
-                f"Note: {count}" if count >= 0 else "Note: errore lettura")
+            self.detail_notes.setText(f"Note: {count}" if count >= 0 else "Note: errore lettura")
             ok, msg = self.backup_utils.verify_backup_integrity(b["path"])
             color = SUCCESS if ok else DANGER
             self.detail_integrity.setText(f"Integrita': {msg}")
@@ -391,7 +397,7 @@ class BackupRestoreDialog(QDialog):
         self.detail_checksum.setText(f"Checksum: {msg_cs}")
         self.detail_checksum.setStyleSheet(f"color: {color_cs};")
 
-    def _on_gdrive_select(self, row):
+    def _on_gdrive_select(self, row: int) -> None:
         if row < 0 or not self.gdrive_backups:
             return
         b = self.gdrive_backups[row]
@@ -403,13 +409,13 @@ class BackupRestoreDialog(QDialog):
         else:
             self.gdrive_detail_encrypted.setText("")
 
-    def _restore(self):
+    def _restore(self) -> None:
         if self.tabs.currentIndex() == 0:
             self._restore_local()
         else:
             self._restore_gdrive()
 
-    def _restore_local(self):
+    def _restore_local(self) -> None:
         row = self.backup_list.currentRow()
         if row < 0 or not self.backups:
             return
@@ -422,34 +428,35 @@ class BackupRestoreDialog(QDialog):
                 return
             password = pwd_dlg.result
 
-        msg = ("Il database attuale verra' sostituito.\n"
-               "Un backup di sicurezza verra' creato automaticamente.\n\n"
-               "Continuare con il ripristino?")
-        if QMessageBox.question(
-            self, "Conferma ripristino", msg
-        ) != QMessageBox.Yes:
+        msg = (
+            "Il database attuale verra' sostituito.\n"
+            "Un backup di sicurezza verra' creato automaticamente.\n\n"
+            "Continuare con il ripristino?"
+        )
+        if QMessageBox.question(self, "Conferma ripristino", msg) != QMessageBox.StandardButton.Yes:
             return
 
         self.result = {"path": b["path"], "password": password}
         self.accept()
 
-    def _restore_gdrive(self):
+    def _restore_gdrive(self) -> None:
         row = self.gdrive_list.currentRow()
         if row < 0 or not self.gdrive_backups:
             return
         b = self.gdrive_backups[row]
 
-        msg = ("Il backup verra' scaricato da Google Drive.\n"
-               "Il database attuale verra' sostituito.\n"
-               "Un backup di sicurezza verra' creato automaticamente.\n\n"
-               "Continuare?")
-        if QMessageBox.question(
-            self, "Conferma ripristino", msg
-        ) != QMessageBox.Yes:
+        msg = (
+            "Il backup verra' scaricato da Google Drive.\n"
+            "Il database attuale verra' sostituito.\n"
+            "Un backup di sicurezza verra' creato automaticamente.\n\n"
+            "Continuare?"
+        )
+        if QMessageBox.question(self, "Conferma ripristino", msg) != QMessageBox.StandardButton.Yes:
             return
 
         # Download to temp location
         import tempfile
+
         tmp_path = os.path.join(tempfile.gettempdir(), b["name"])
         ok, msg_dl = self.backup_utils.download_gdrive_backup(b["id"], tmp_path)
         if not ok:

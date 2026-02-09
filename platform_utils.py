@@ -1,22 +1,23 @@
 """Utility cross-platform: apertura file, screenshot, font, rilevamento OS."""
 
+from __future__ import annotations
+
 import os
-import sys
-import platform
 import subprocess
+import sys
 
-IS_WINDOWS = sys.platform == "win32"
-IS_LINUX = sys.platform.startswith("linux")
-IS_MAC = sys.platform == "darwin"
+IS_WINDOWS: bool = sys.platform == "win32"
+IS_LINUX: bool = sys.platform.startswith("linux")
+IS_MAC: bool = sys.platform == "darwin"
 
 
-def open_file(path):
+def open_file(path: str) -> bool:
     """Apri un file con l'applicazione predefinita del sistema."""
     if not os.path.exists(path):
         return False
     try:
         if IS_WINDOWS:
-            os.startfile(path)
+            os.startfile(path)  # type: ignore[attr-defined]
         elif IS_MAC:
             subprocess.Popen(["open", path])
         else:
@@ -26,7 +27,7 @@ def open_file(path):
         return False
 
 
-def get_font_path():
+def get_font_path() -> str | None:
     """Trova un font TrueType disponibile nel sistema."""
     candidates = []
     if IS_WINDOWS:
@@ -69,7 +70,7 @@ def get_font_path():
     return None
 
 
-def get_ui_font():
+def get_ui_font() -> str:
     """Restituisce il nome del font UI migliore per la piattaforma."""
     if IS_WINDOWS:
         return "Segoe UI"
@@ -79,7 +80,7 @@ def get_ui_font():
         return "Sans"
 
 
-def get_mono_font():
+def get_mono_font() -> str:
     """Restituisce il nome del font monospace migliore per la piattaforma."""
     if IS_WINDOWS:
         return "Consolas"
@@ -89,7 +90,7 @@ def get_mono_font():
         return "Monospace"
 
 
-def take_screenshot(save_path):
+def take_screenshot(save_path: str) -> bool:
     """Cattura screenshot schermo intero, cross-platform."""
     if IS_WINDOWS or IS_MAC:
         return _screenshot_pil(save_path)
@@ -97,7 +98,7 @@ def take_screenshot(save_path):
         return _screenshot_linux(save_path)
 
 
-def take_screenshot_region(save_path):
+def take_screenshot_region(save_path: str) -> bool:
     """Cattura screenshot di una regione, cross-platform."""
     if IS_WINDOWS or IS_MAC:
         # Su Windows/Mac catturiamo tutto, l'utente potrà ritagliare con l'annotatore
@@ -106,10 +107,11 @@ def take_screenshot_region(save_path):
         return _screenshot_linux_region(save_path)
 
 
-def _screenshot_pil(save_path):
+def _screenshot_pil(save_path: str) -> bool:
     """Screenshot via PIL.ImageGrab (Windows/Mac/Linux con XCB)."""
     try:
         from PIL import ImageGrab
+
         img = ImageGrab.grab()
         img.save(save_path)
         return os.path.exists(save_path)
@@ -117,7 +119,7 @@ def _screenshot_pil(save_path):
         return False
 
 
-def _screenshot_linux(save_path):
+def _screenshot_linux(save_path: str) -> bool:
     """Screenshot su Linux con tool nativi."""
     import shutil
 
@@ -152,7 +154,7 @@ def _screenshot_linux(save_path):
     return _screenshot_pil(save_path)
 
 
-def _screenshot_linux_region(save_path):
+def _screenshot_linux_region(save_path: str) -> bool:
     """Screenshot regione su Linux."""
     import shutil
 

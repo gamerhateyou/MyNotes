@@ -1,15 +1,32 @@
 """Category and Note creation dialogs."""
 
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                                QLineEdit, QPushButton, QComboBox, QMessageBox)
+from __future__ import annotations
+
+import sqlite3
+from typing import TYPE_CHECKING, Any
+
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QKeyEvent
 
 
 class CategoryDialog(QDialog):
-    def __init__(self, parent, title="Nuova Categoria", initial_name=""):
+    def __init__(self, parent: QWidget, title: str = "Nuova Categoria", initial_name: str = "") -> None:
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.result = None
+        self.result: str | None = None  # type: ignore[assignment]
         self.setFixedWidth(350)
         self.setModal(True)
 
@@ -34,29 +51,29 @@ class CategoryDialog(QDialog):
         self.entry.setFocus()
         self.exec()
 
-    def _on_ok(self):
+    def _on_ok(self) -> None:
         name = self.entry.text().strip()
         if name:
             self.result = name
             self.accept()
 
-    def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._on_ok()
-        elif event.key() == Qt.Key_Escape:
+        elif event.key() == Qt.Key.Key_Escape:
             self.reject()
         else:
             super().keyPressEvent(event)
 
 
 class NoteDialog(QDialog):
-    def __init__(self, parent, categories):
+    def __init__(self, parent: QWidget, categories: list[sqlite3.Row]) -> None:
         super().__init__(parent)
         self.setWindowTitle("Nuova Nota")
-        self.result = None
+        self.result: dict[str, Any] | None = None  # type: ignore[assignment]
         self.setFixedWidth(400)
         self.setModal(True)
-        self.categories = categories
+        self.categories: list[sqlite3.Row] = categories
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -85,7 +102,7 @@ class NoteDialog(QDialog):
         self.title_entry.setFocus()
         self.exec()
 
-    def _on_ok(self):
+    def _on_ok(self) -> None:
         title = self.title_entry.text().strip()
         if not title:
             QMessageBox.warning(self, "Attenzione", "Inserisci un titolo.")
@@ -97,10 +114,10 @@ class NoteDialog(QDialog):
         self.result = {"title": title, "category_id": cat_id}
         self.accept()
 
-    def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._on_ok()
-        elif event.key() == Qt.Key_Escape:
+        elif event.key() == Qt.Key.Key_Escape:
             self.reject()
         else:
             super().keyPressEvent(event)

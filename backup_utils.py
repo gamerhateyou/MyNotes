@@ -1,27 +1,34 @@
 """Sistema di backup locale — configurabile da GUI. GDrive in gdrive_utils.py."""
 
-import os
-import json
-import shutil
+from __future__ import annotations
+
 import hashlib
-import sqlite3
+import json
 import logging
+import os
+import shutil
+import sqlite3
 import threading
+from collections.abc import Callable
 from datetime import datetime, timedelta
+from typing import Any
+
 import database as db
 
 # Re-export GDrive functions for backward compatibility
-from gdrive_utils import (is_gdrive_configured, is_gdrive_available,
-                          gdrive_authorize, gdrive_disconnect,
-                          do_gdrive_backup, list_gdrive_backups,
-                          download_gdrive_backup)
+from gdrive_utils import (
+    do_gdrive_backup as do_gdrive_backup,
+)
+from gdrive_utils import (
+    is_gdrive_configured as is_gdrive_configured,
+)
 
-log = logging.getLogger("backup")
+log: logging.Logger = logging.getLogger("backup")
 
-SETTINGS_PATH = os.path.join(db.DATA_DIR, "backup_settings.json")
+SETTINGS_PATH: str = os.path.join(db.DATA_DIR, "backup_settings.json")
 
 
-def get_settings():
+def get_settings() -> dict[str, Any]:
     defaults = {
         "auto_backup": True,
         "local_backup_dir": db.BACKUP_DIR,
@@ -36,7 +43,7 @@ def get_settings():
     }
     if os.path.exists(SETTINGS_PATH):
         try:
-            with open(SETTINGS_PATH, "r") as f:
+            with open(SETTINGS_PATH) as f:
                 saved = json.load(f)
                 defaults.update(saved)
         except (json.JSONDecodeError, OSError):
@@ -44,44 +51,44 @@ def get_settings():
     return defaults
 
 
-def save_settings(settings):
+def save_settings(settings: dict[str, Any]) -> None:
     os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
     with open(SETTINGS_PATH, "w") as f:
         json.dump(settings, f, indent=2)
     db._secure_file(SETTINGS_PATH)
 
 
-_LEGACY_KEY_PATH = os.path.join(db.DATA_DIR, "backup_key.json")
-PRE_RESTORE_DIR = os.path.join(db.BACKUP_DIR, "pre_restore")
+_LEGACY_KEY_PATH: str = os.path.join(db.DATA_DIR, "backup_key.json")
+PRE_RESTORE_DIR: str = os.path.join(db.BACKUP_DIR, "pre_restore")
 
 # --- Backup password: in-memory only (mai salvata su disco) ---
-_session_password = None
+_session_password: str | None = None
 
 
-def get_backup_password():
+def get_backup_password() -> str | None:
     """Ritorna la password di crittografia backup (solo in memoria)."""
     return _session_password
 
 
-def set_backup_password(password):
+def set_backup_password(password: str) -> None:
     """Imposta la password di crittografia backup (solo in memoria)."""
     global _session_password
     _session_password = password
 
 
-def clear_backup_password():
+def clear_backup_password() -> None:
     """Cancella la password dalla memoria."""
     global _session_password
     _session_password = None
 
 
-def migrate_legacy_password():
+def migrate_legacy_password() -> bool:
     """Migra password da backup_key.json (plaintext) a memoria, poi cancella il file."""
     global _session_password
     if not os.path.exists(_LEGACY_KEY_PATH):
         return False
     try:
-        with open(_LEGACY_KEY_PATH, "r") as f:
+        with open(_LEGACY_KEY_PATH) as f:
             data = json.load(f)
         pw = data.get("password")
         if pw:
@@ -94,14 +101,15 @@ def migrate_legacy_password():
     return False
 
 
-def has_backup_password():
+def has_backup_password() -> bool:
     """Controlla se la password e' disponibile (in memoria)."""
     return _session_password is not None
 
 
 # --- Integrity & Checksum ---
 
-def verify_backup_integrity(backup_path):
+
+def verify_backup_integrity(backup_path: str) -> tuple[bool, str]:
     """Esegue PRAGMA integrity_check su un backup .db. Ritorna (bool, msg)."""
     try:
         conn = sqlite3.connect(backup_path)
@@ -114,7 +122,7 @@ def verify_backup_integrity(backup_path):
         return False, f"Errore verifica: {e}"
 
 
-def compute_checksum(file_path):
+def compute_checksum(file_path: str) -> str:
     """Calcola SHA-256 hex di un file."""
     h = hashlib.sha256()
     with open(file_path, "rb") as f:
@@ -123,7 +131,7 @@ def compute_checksum(file_path):
     return h.hexdigest()
 
 
-def save_checksum(backup_path):
+def save_checksum(backup_path: str) -> str:
     """Scrive file .sha256 sidecar accanto al backup."""
     checksum = compute_checksum(backup_path)
     sidecar = backup_path + ".sha256"
@@ -132,14 +140,14 @@ def save_checksum(backup_path):
     return sidecar
 
 
-def verify_checksum(backup_path):
+def verify_checksum(backup_path: str) -> tuple[bool | None, str]:
     """Confronta checksum sidecar con file attuale. Ritorna (bool/None, msg).
     None indica checksum non disponibile (backup pre-feature).
     """
     sidecar = backup_path + ".sha256"
     if not os.path.exists(sidecar):
         return None, "Non disponibile"
-    with open(sidecar, "r") as f:
+    with open(sidecar) as f:
         saved = f.read().strip()
     current = compute_checksum(backup_path)
     if saved == current:
@@ -147,7 +155,7 @@ def verify_checksum(backup_path):
     return False, "Checksum non corrisponde: file modificato o corrotto"
 
 
-def get_note_count_from_backup(path):
+def get_note_count_from_backup(path: str) -> int:
     """Apre un backup db e conta le note non cancellate."""
     try:
         conn = sqlite3.connect(path)
@@ -160,7 +168,8 @@ def get_note_count_from_backup(path):
 
 # --- Restore ---
 
-def restore_from_backup(path, password=None):
+
+def restore_from_backup(path: str, password: str | None = None) -> tuple[bool, str, str | None]:
     """Ripristina un backup. Crea safety backup prima.
     Ritorna (success, message, safety_path).
     """
@@ -180,6 +189,7 @@ def restore_from_backup(path, password=None):
             if not password:
                 return False, "Password richiesta per backup crittografato", safety_path
             import crypto_utils
+
             temp_decrypted = path + ".tmp"
             ok, err = crypto_utils.decrypt_file(path, temp_decrypted, password)
             if not ok:
@@ -212,7 +222,8 @@ def restore_from_backup(path, password=None):
 
 # --- Local Backup ---
 
-def do_local_backup():
+
+def do_local_backup() -> str:
     settings = get_settings()
     dest = settings.get("local_backup_dir", db.BACKUP_DIR)
     backup_path = db.create_backup(dest)
@@ -231,6 +242,7 @@ def do_local_backup():
         if password:
             try:
                 import crypto_utils
+
                 enc_path = backup_path + ".enc"
                 crypto_utils.encrypt_file(backup_path, enc_path, password)
                 os.remove(backup_path)
@@ -254,12 +266,15 @@ def do_local_backup():
     return backup_path
 
 
-def _cleanup_old_backups(backup_dir, max_count, retention_days=0):
+def _cleanup_old_backups(backup_dir: str, max_count: int, retention_days: int = 0) -> None:
     if not os.path.exists(backup_dir):
         return
     backups = sorted(
-        [f for f in os.listdir(backup_dir)
-         if f.startswith("mynotes_backup_") and (f.endswith(".db") or f.endswith(".db.enc"))]
+        [
+            f
+            for f in os.listdir(backup_dir)
+            if f.startswith("mynotes_backup_") and (f.endswith(".db") or f.endswith(".db.enc"))
+        ]
     )
     # Prima cancella per eta
     if retention_days > 0:
@@ -283,7 +298,7 @@ def _cleanup_old_backups(backup_dir, max_count, retention_days=0):
         _remove_backup_file(backup_dir, old)
 
 
-def _remove_backup_file(backup_dir, filename):
+def _remove_backup_file(backup_dir: str, filename: str) -> None:
     """Rimuove un file backup e il suo sidecar .sha256."""
     path = os.path.join(backup_dir, filename)
     if os.path.exists(path):
@@ -293,15 +308,17 @@ def _remove_backup_file(backup_dir, filename):
         os.remove(sidecar)
 
 
-def do_full_backup(callback=None):
+def do_full_backup(callback: Callable[[bool, str], None] | None = None) -> None:
     """Local backup + optional Google Drive."""
     backup_path = do_local_backup()
     settings = get_settings()
 
     if settings.get("gdrive_enabled") and is_gdrive_configured():
-        def _cb(success, msg):
+
+        def _cb(success: bool, msg: str) -> None:
             if callback:
                 callback(success, f"Backup locale: {backup_path}\n{msg}")
+
         do_gdrive_backup(_cb)
     else:
         if callback:
@@ -310,16 +327,18 @@ def do_full_backup(callback=None):
 
 # --- Backup Scheduler ---
 
+
 class BackupScheduler:
     """Scheduler per backup automatici basato su QTimer."""
 
-    def __init__(self, parent):
+    def __init__(self, parent: Any) -> None:
         from PySide6.QtCore import QTimer
+
         self._timer = QTimer(parent)
         self._timer.timeout.connect(self._tick)
         self._interval_ms = 0
 
-    def start(self):
+    def start(self) -> None:
         """Legge intervallo da settings e schedula il prossimo backup."""
         self.stop()
         settings = get_settings()
@@ -330,13 +349,14 @@ class BackupScheduler:
         self._timer.start(self._interval_ms)
         log.info("Scheduler avviato: ogni %d minuti", minutes)
 
-    def stop(self):
+    def stop(self) -> None:
         """Cancella il timer schedulato."""
         self._timer.stop()
 
-    def _tick(self):
+    def _tick(self) -> None:
         """Esegue backup in thread."""
-        def _run():
+
+        def _run() -> None:
             try:
                 settings = get_settings()
                 if settings.get("encrypt_backups") and not has_backup_password():
@@ -351,6 +371,6 @@ class BackupScheduler:
 
         threading.Thread(target=_run, daemon=True).start()
 
-    def restart_if_settings_changed(self):
+    def restart_if_settings_changed(self) -> None:
         """Riavvia lo scheduler con le nuove impostazioni."""
         self.start()

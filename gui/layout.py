@@ -1,21 +1,46 @@
 """Toolbar and main layout construction (PySide6)."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QToolBar, QPushButton, QMenu, QLabel, QLineEdit, QComboBox,
-    QSplitter, QVBoxLayout, QHBoxLayout, QWidget, QFrame,
-    QScrollArea, QPlainTextEdit, QListWidget, QAbstractItemView,
-    QStatusBar, QStackedWidget
+    QAbstractItemView,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QPushButton,
+    QScrollArea,
+    QSplitter,
+    QStackedWidget,
+    QStatusBar,
+    QToolBar,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QFont, QColor, QTextCharFormat
 
-from gui.constants import (UI_FONT, MONO_FONT, FONT_XS, FONT_SM, FONT_BASE, FONT_LG, FONT_XL,
-                           BG_DARK, BG_SURFACE, BG_ELEVATED,
-                           BORDER, FG_PRIMARY, FG_SECONDARY, FG_MUTED,
-                           ACCENT, FG_ON_ACCENT, INFO, DANGER, SELECT_BG, SELECT_FG)
+from gui.constants import (
+    ACCENT,
+    BG_SURFACE,
+    DANGER,
+    FG_MUTED,
+    FG_SECONDARY,
+    FONT_LG,
+    FONT_SM,
+    FONT_XL,
+    MONO_FONT,
+    UI_FONT,
+)
+
+if TYPE_CHECKING:
+    from gui import MyNotesApp
 
 
-def build_toolbar(app):
+def build_toolbar(app: MyNotesApp) -> None:
     toolbar = QToolBar("Toolbar")
     toolbar.setMovable(False)
     toolbar.setIconSize(QSize(16, 16))
@@ -74,14 +99,14 @@ def build_toolbar(app):
     toolbar.addWidget(app.tag_combo)
 
 
-def build_main_layout(app):
+def build_main_layout(app: MyNotesApp) -> None:
     central = QWidget()
     app.setCentralWidget(central)
     main_layout = QVBoxLayout(central)
     main_layout.setContentsMargins(0, 0, 0, 0)
     main_layout.setSpacing(0)
 
-    splitter = QSplitter(Qt.Horizontal)
+    splitter = QSplitter(Qt.Orientation.Horizontal)
     main_layout.addWidget(splitter)
 
     # --- Sidebar (categories) ---
@@ -98,12 +123,12 @@ def build_main_layout(app):
     sidebar_layout.addWidget(cat_header)
 
     from gui.widgets import CategoryList
+
     app.cat_listbox = CategoryList()
     app.cat_listbox.setStyleSheet(f"background-color: {BG_SURFACE}; border: none;")
     app.cat_listbox.itemClicked.connect(lambda item: app.notes_ctl.on_category_select())
-    app.cat_listbox.setContextMenuPolicy(Qt.CustomContextMenu)
-    app.cat_listbox.customContextMenuRequested.connect(
-        lambda pos: app.notes_ctl.show_category_context_menu(pos))
+    app.cat_listbox.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+    app.cat_listbox.customContextMenuRequested.connect(lambda pos: app.notes_ctl.show_category_context_menu(pos))
     sidebar_layout.addWidget(app.cat_listbox)
 
     sidebar.setMinimumWidth(160)
@@ -118,20 +143,18 @@ def build_main_layout(app):
 
     app.list_header = QLabel("Note")
     app.list_header.setStyleSheet(
-        f"font-size: {FONT_XL}pt; font-weight: bold; padding: 8px 10px; "
-        f"background-color: {BG_SURFACE};"
+        f"font-size: {FONT_XL}pt; font-weight: bold; padding: 8px 10px; background-color: {BG_SURFACE};"
     )
     center_layout.addWidget(app.list_header)
 
     from gui.widgets import DraggableNoteList
+
     app.note_listbox = DraggableNoteList()
-    app.note_listbox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+    app.note_listbox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
     app.note_listbox.itemClicked.connect(lambda item: app.notes_ctl.on_note_click(item))
-    app.note_listbox.setContextMenuPolicy(Qt.CustomContextMenu)
-    app.note_listbox.customContextMenuRequested.connect(
-        lambda pos: app.notes_ctl.show_context_menu(pos))
-    app.note_listbox.itemDoubleClicked.connect(
-        lambda item: app.notes_ctl.on_note_double_click(item))
+    app.note_listbox.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+    app.note_listbox.customContextMenuRequested.connect(lambda pos: app.notes_ctl.show_context_menu(pos))
+    app.note_listbox.itemDoubleClicked.connect(lambda item: app.notes_ctl.on_note_double_click(item))
     center_layout.addWidget(app.note_listbox)
 
     center.setMinimumWidth(200)
@@ -145,30 +168,25 @@ def build_main_layout(app):
 
     # Title
     app.title_entry = QLineEdit()
-    app.title_entry.setFont(QFont(UI_FONT, FONT_XL, QFont.Bold))
+    app.title_entry.setFont(QFont(UI_FONT, FONT_XL, QFont.Weight.Bold))
     app.title_entry.setPlaceholderText("Titolo nota...")
     app.title_entry.setStyleSheet(
-        f"border: none; background: transparent; padding: 8px; "
-        f"font-size: {FONT_XL}pt; font-weight: bold;"
+        f"border: none; background: transparent; padding: 8px; font-size: {FONT_XL}pt; font-weight: bold;"
     )
     app.title_entry.textChanged.connect(lambda: app.notes_ctl.schedule_save())
     editor_layout.addWidget(app.title_entry)
 
     # Meta labels
     app.meta_label = QLabel("")
-    app.meta_label.setStyleSheet(
-        f"color: {FG_SECONDARY}; font-size: {FONT_SM}pt; padding: 0px 12px;"
-    )
+    app.meta_label.setStyleSheet(f"color: {FG_SECONDARY}; font-size: {FONT_SM}pt; padding: 0px 12px;")
     editor_layout.addWidget(app.meta_label)
 
     app.tags_label = QLabel("")
-    app.tags_label.setStyleSheet(
-        f"color: {FG_SECONDARY}; font-size: {FONT_SM}pt; padding: 2px 12px;"
-    )
+    app.tags_label.setStyleSheet(f"color: {FG_SECONDARY}; font-size: {FONT_SM}pt; padding: 2px 12px;")
     editor_layout.addWidget(app.tags_label)
 
     # Editor + gallery vertical splitter
-    editor_splitter = QSplitter(Qt.Vertical)
+    editor_splitter = QSplitter(Qt.Orientation.Vertical)
     editor_layout.addWidget(editor_splitter)
 
     # QStackedWidget for editor / decrypt overlay
@@ -176,6 +194,7 @@ def build_main_layout(app):
 
     # Page 0: text editor
     from gui.widgets import ChecklistEditor
+
     app.text_editor = ChecklistEditor()
     app.text_editor.setFont(QFont(MONO_FONT, FONT_LG))
     app.text_editor.setPlaceholderText("Scrivi qui...")
@@ -185,23 +204,23 @@ def build_main_layout(app):
     # Page 1: decrypt overlay
     encrypt_overlay = QWidget()
     overlay_layout = QVBoxLayout(encrypt_overlay)
-    overlay_layout.setAlignment(Qt.AlignCenter)
+    overlay_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
     lock_label = QLabel("Nota criptata")
     lock_label.setFont(QFont(UI_FONT, FONT_XL))
-    lock_label.setAlignment(Qt.AlignCenter)
+    lock_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     lock_label.setStyleSheet(f"color: {FG_SECONDARY};")
     overlay_layout.addWidget(lock_label)
 
     hint_label = QLabel("Inserisci la password per visualizzare il contenuto")
-    hint_label.setAlignment(Qt.AlignCenter)
+    hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     hint_label.setStyleSheet(f"color: {FG_MUTED};")
     overlay_layout.addWidget(hint_label)
 
     pw_row = QHBoxLayout()
-    pw_row.setAlignment(Qt.AlignCenter)
+    pw_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
     app.decrypt_entry = QLineEdit()
-    app.decrypt_entry.setEchoMode(QLineEdit.Password)
+    app.decrypt_entry.setEchoMode(QLineEdit.EchoMode.Password)
     app.decrypt_entry.setPlaceholderText("Password...")
     app.decrypt_entry.setFixedWidth(250)
     pw_row.addWidget(app.decrypt_entry)
@@ -211,7 +230,7 @@ def build_main_layout(app):
     overlay_layout.addLayout(pw_row)
 
     app.decrypt_error_label = QLabel("")
-    app.decrypt_error_label.setAlignment(Qt.AlignCenter)
+    app.decrypt_error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     app.decrypt_error_label.setStyleSheet(f"color: {DANGER};")
     overlay_layout.addWidget(app.decrypt_error_label)
 
@@ -282,9 +301,7 @@ def build_main_layout(app):
     status_bar.showMessage("Pronto")
 
     # Branding link (permanent widget, right side)
-    from PySide6.QtGui import QDesktopServices
-    from PySide6.QtCore import QUrl
-    brand_label = QLabel('<a href="https://homelabz.cc" style="color: {accent};">homelabz.cc</a>'.format(accent=ACCENT))
+    brand_label = QLabel(f'<a href="https://homelabz.cc" style="color: {ACCENT};">homelabz.cc</a>')
     brand_label.setOpenExternalLinks(True)
     brand_label.setStyleSheet(f"padding-right: 8px; font-size: {FONT_SM}pt;")
     status_bar.addPermanentWidget(brand_label)

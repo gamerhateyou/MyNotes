@@ -1,6 +1,8 @@
 """Codici errore e eccezione strutturata per MyNotes."""
 
-ERROR_CODES = {
+from __future__ import annotations
+
+ERROR_CODES: dict[str, str] = {
     # Updater
     "UPD-001": "Impossibile contattare GitHub (errore di rete)",
     "UPD-002": "Risposta API GitHub non valida",
@@ -23,7 +25,7 @@ ERROR_CODES = {
 }
 
 
-def get_error_message(code):
+def get_error_message(code: str) -> str:
     """Ritorna la descrizione italiana per un codice errore."""
     return ERROR_CODES.get(code, "Errore sconosciuto")
 
@@ -37,13 +39,13 @@ class AppError(Exception):
         detail: Dettaglio tecnico (es. str dell'eccezione originale)
     """
 
-    def __init__(self, code, detail=""):
+    def __init__(self, code: str, detail: str = "") -> None:
         self.code = code
         self.message = get_error_message(code)
         self.detail = detail
         super().__init__(str(self))
 
-    def __str__(self):
+    def __str__(self) -> str:
         s = f"[{self.code}] {self.message}"
         if self.detail:
             s += f": {self.detail}"

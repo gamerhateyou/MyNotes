@@ -1,16 +1,23 @@
 """Tag manager dialog."""
 
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                                QLineEdit, QPushButton, QCheckBox, QWidget)
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QCheckBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QKeyEvent
+
 import database as db
 
 
 class TagManagerDialog(QDialog):
-    def __init__(self, parent, note_id):
+    def __init__(self, parent: QWidget, note_id: int) -> None:
         super().__init__(parent)
         self.setWindowTitle("Gestione Tag")
-        self.note_id = note_id
+        self.note_id: int = note_id
         self.setFixedWidth(350)
         self.setModal(True)
 
@@ -32,7 +39,7 @@ class TagManagerDialog(QDialog):
         self.check_layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.check_widget)
 
-        self.tag_vars = {}
+        self.tag_vars: dict[int, QCheckBox] = {}
         self._load_tags()
 
         btn_layout = QHBoxLayout()
@@ -44,11 +51,11 @@ class TagManagerDialog(QDialog):
 
         self.exec()
 
-    def _load_tags(self):
+    def _load_tags(self) -> None:
         while self.check_layout.count():
             child = self.check_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
+            if child is not None and child.widget():
+                child.widget().deleteLater()  # type: ignore[union-attr]
 
         all_tags = db.get_all_tags()
         note_tags = db.get_note_tags(self.note_id)
@@ -62,20 +69,20 @@ class TagManagerDialog(QDialog):
         if not all_tags:
             self.check_layout.addWidget(QLabel("Nessun tag creato."))
 
-    def _add_tag(self):
+    def _add_tag(self) -> None:
         name = self.new_tag_entry.text().strip()
         if name:
             db.add_tag(name)
             self.new_tag_entry.clear()
             self._load_tags()
 
-    def _on_close(self):
+    def _on_close(self) -> None:
         selected_ids = [tid for tid, cb in self.tag_vars.items() if cb.isChecked()]
         db.set_note_tags(self.note_id, selected_ids)
         self.accept()
 
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key.Key_Escape:
             self._on_close()
         else:
             super().keyPressEvent(event)

@@ -1,26 +1,44 @@
 """Audio recording dialog."""
 
+from __future__ import annotations
+
 import os
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                                QLineEdit, QPushButton, QMessageBox, QFrame)
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QKeyEvent
+
+import contextlib
 
 import audio_utils
 import platform_utils
-from gui.constants import (UI_FONT, FG_SECONDARY, DANGER, SUCCESS)
+from gui.constants import DANGER, FG_SECONDARY, SUCCESS, UI_FONT
 
 
 class AudioRecordDialog(QDialog):
-    def __init__(self, parent, mode="record", audio_path=None):
+    def __init__(self, parent: QWidget, mode: str = "record", audio_path: str | None = None) -> None:
         super().__init__(parent)
-        self.mode = mode
-        self.audio_path = audio_path
-        self.result = None
-        self._timer = None
-        self._elapsed = 0
-        self._recording = False
-        self._temp_path = None
+        self.mode: str = mode
+        self.audio_path: str | None = audio_path
+        self.result: dict[str, str] | None = None  # type: ignore[assignment]
+        self._timer: QTimer | None = None
+        self._elapsed: int = 0
+        self._recording: bool = False
+        self._temp_path: str | None = None
         self.setFixedWidth(400)
         self.setModal(True)
 
@@ -33,7 +51,7 @@ class AudioRecordDialog(QDialog):
 
         self.exec()
 
-    def _build_record_ui(self):
+    def _build_record_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
 
@@ -42,13 +60,13 @@ class AudioRecordDialog(QDialog):
         layout.addWidget(self.desc_entry)
 
         self.timer_label = QLabel("00:00")
-        self.timer_label.setFont(QFont(UI_FONT, 18, QFont.Bold))
-        self.timer_label.setAlignment(Qt.AlignCenter)
+        self.timer_label.setFont(QFont(UI_FONT, 18, QFont.Weight.Bold))
+        self.timer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.timer_label)
 
         self.status_label = QLabel("Pronto per registrare")
         self.status_label.setStyleSheet(f"color: {FG_SECONDARY};")
-        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_label)
 
         rec_layout = QHBoxLayout()
@@ -63,12 +81,11 @@ class AudioRecordDialog(QDialog):
 
         if not audio_utils.is_available():
             self.rec_btn.setEnabled(False)
-            self.status_label.setText(
-                "Libreria 'sounddevice' non installata.\npip install sounddevice")
+            self.status_label.setText("Libreria 'sounddevice' non installata.\npip install sounddevice")
             self.status_label.setStyleSheet(f"color: {DANGER};")
 
         sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
+        sep.setFrameShape(QFrame.Shape.HLine)
         layout.addWidget(sep)
 
         btn_layout = QHBoxLayout()
@@ -82,7 +99,7 @@ class AudioRecordDialog(QDialog):
         btn_layout.addWidget(cancel_btn)
         layout.addLayout(btn_layout)
 
-    def _build_describe_ui(self):
+    def _build_describe_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
 
@@ -103,19 +120,18 @@ class AudioRecordDialog(QDialog):
         btn_layout.addWidget(cancel_btn)
         layout.addLayout(btn_layout)
 
-    def _toggle_record(self):
+    def _toggle_record(self) -> None:
         if not self._recording:
             self._start_recording()
         else:
             self._stop_recording()
 
-    def _start_recording(self):
+    def _start_recording(self) -> None:
         self._temp_path = audio_utils.get_temp_wav_path()
         try:
             audio_utils.record_audio()
         except Exception as e:
-            QMessageBox.critical(self, "Errore",
-                                 f"Impossibile avviare la registrazione:\n{e}")
+            QMessageBox.critical(self, "Errore", f"Impossibile avviare la registrazione:\n{e}")
             return
         self._recording = True
         self._elapsed = 0
@@ -128,28 +144,28 @@ class AudioRecordDialog(QDialog):
         self._timer.timeout.connect(self._update_timer)
         self._timer.start(1000)
 
-    def _stop_recording(self):
+    def _stop_recording(self) -> None:
         if self._timer:
             self._timer.stop()
             self._timer = None
         self._recording = False
-        audio_utils.stop_recording(self._temp_path)
+        audio_utils.stop_recording(self._temp_path or "")
         self.rec_btn.setText("Registra")
         self.preview_btn.setEnabled(True)
         self.save_btn.setEnabled(True)
         self.status_label.setText("Registrazione completata")
         self.status_label.setStyleSheet(f"color: {SUCCESS};")
 
-    def _update_timer(self):
+    def _update_timer(self) -> None:
         self._elapsed += 1
         mins, secs = divmod(self._elapsed, 60)
         self.timer_label.setText(f"{mins:02d}:{secs:02d}")
 
-    def _preview(self):
+    def _preview(self) -> None:
         if self._temp_path and os.path.exists(self._temp_path):
             platform_utils.open_file(self._temp_path)
 
-    def _on_save(self):
+    def _on_save(self) -> None:
         if self._recording:
             self._stop_recording()
 
@@ -157,29 +173,26 @@ class AudioRecordDialog(QDialog):
 
         if self.mode == "record":
             if not self._temp_path or not os.path.exists(self._temp_path):
-                QMessageBox.warning(self, "Attenzione",
-                                    "Nessuna registrazione effettuata.")
+                QMessageBox.warning(self, "Attenzione", "Nessuna registrazione effettuata.")
                 return
             self.result = {"path": self._temp_path, "description": desc}
         else:
-            self.result = {"path": self.audio_path, "description": desc}
+            self.result = {"path": self.audio_path or "", "description": desc}
         self.accept()
 
-    def _on_cancel(self):
+    def _on_cancel(self) -> None:
         if self._recording:
             self._stop_recording()
         if self.mode == "record" and self._temp_path and os.path.exists(self._temp_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(self._temp_path)
-            except OSError:
-                pass
         self.result = None
         self.reject()
 
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key.Key_Escape:
             self._on_cancel()
-        elif event.key() in (Qt.Key_Return, Qt.Key_Enter) and self.mode == "describe":
+        elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and self.mode == "describe":
             self._on_save()
         else:
             super().keyPressEvent(event)

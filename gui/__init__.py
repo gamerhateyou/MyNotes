@@ -1,47 +1,101 @@
 """MyNotes GUI - Main application window (PySide6)."""
 
+from __future__ import annotations
+
 import logging
-from PySide6.QtWidgets import QMainWindow, QApplication
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import sqlite3
+
+    from PySide6.QtGui import QCloseEvent
+    from PySide6.QtWidgets import (
+        QComboBox,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QPushButton,
+        QScrollArea,
+        QStackedWidget,
+        QWidget,
+    )
+
+    from gui.widgets import CategoryList, ChecklistEditor, DraggableNoteList
+
 from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QMainWindow
 
-import database as db
 import backup_utils
-from version import VERSION
-
-from gui.constants import (UI_FONT, MONO_FONT, FONT_SM, FONT_BASE, FONT_XL,
-                           BG_DARK, BG_SURFACE, BG_ELEVATED,
-                           BORDER, BORDER_LIGHT,
-                           FG_PRIMARY, FG_SECONDARY, FG_MUTED, FG_ON_ACCENT,
-                           ACCENT, WARNING, SELECT_BG, SELECT_FG)
-from gui.menu import build_menu
-from gui.layout import build_toolbar, build_main_layout
-from gui.note_controller import NoteController
-from gui.export_controller import ExportController
-from gui.media_controller import MediaController
 from gui.backup_controller import BackupController
+from gui.constants import (
+    ACCENT,
+    BG_DARK,
+    BG_ELEVATED,
+    BG_SURFACE,
+    BORDER,
+    BORDER_LIGHT,
+    FG_PRIMARY,
+    FG_SECONDARY,
+    FONT_BASE,
+    MONO_FONT,
+    SELECT_BG,
+    SELECT_FG,
+)
+from gui.export_controller import ExportController
+from gui.layout import build_main_layout, build_toolbar
+from gui.media_controller import MediaController
+from gui.menu import build_menu
+from gui.note_controller import NoteController
 from gui.update_controller import UpdateController
+from version import VERSION
 
 log = logging.getLogger("app")
 
 
 class MyNotesApp(QMainWindow):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(f"MyNotes v{VERSION} by homelabz")
         self.resize(1200, 750)
         self.setMinimumSize(900, 550)
 
         # State
-        self.current_note_id = None
-        self.current_category_id = None
-        self.current_tag_id = None
-        self.show_trash = False
-        self.show_favorites = False
-        self._save_job = None
-        self._image_refs = []
-        self._version_counter = 0
-        self._decrypted_cache = {}
-        self._detached_windows = {}
+        self.current_note_id: int | None = None
+        self.current_category_id: int | None = None
+        self.current_tag_id: int | None = None
+        self.show_trash: bool = False
+        self.show_favorites: bool = False
+        self._save_job: QTimer | None = None
+        self._image_refs: list[Any] = []
+        self._version_counter: int = 0
+        self._decrypted_cache: dict[int, str] = {}
+        self._detached_windows: dict[int, Any] = {}
+
+        # Data
+        self.categories: list[sqlite3.Row] = []
+        self.notes: list[sqlite3.Row] = []
+        self.all_tags: list[sqlite3.Row] = []
+        self.gallery_attachments: list[sqlite3.Row] = []
+
+        # Widgets (set by build_toolbar / build_main_layout)
+        self.search_entry: QLineEdit
+        self.tag_combo: QComboBox
+        self.cat_listbox: CategoryList
+        self.note_listbox: DraggableNoteList
+        self.list_header: QLabel
+        self.title_entry: QLineEdit
+        self.text_editor: ChecklistEditor
+        self.meta_label: QLabel
+        self.tags_label: QLabel
+        self.editor_stack: QStackedWidget
+        self.decrypt_entry: QLineEdit
+        self.decrypt_btn: QPushButton
+        self.decrypt_error_label: QLabel
+        self.gallery_scroll: QScrollArea
+        self.gallery_inner: QWidget
+        self.gallery_inner_layout: QHBoxLayout
+        self.selected_image_index: int | None
+        self.gallery_labels: list[QLabel]
 
         # Apply custom QSS on top of qdarktheme
         self._apply_qss()
@@ -70,7 +124,7 @@ class MyNotesApp(QMainWindow):
 
         QTimer.singleShot(2000, self.update_ctl.check_silent)
 
-    def open_in_window(self, note_id):
+    def open_in_window(self, note_id: int) -> None:
         if note_id is None:
             return
         if note_id in self._detached_windows:
@@ -83,25 +137,26 @@ class MyNotesApp(QMainWindow):
             self.notes_ctl._clear_editor()
             self.note_listbox.clearSelection()
         from gui.note_window import NoteWindow
+
         win = NoteWindow(self, note_id)
         self._detached_windows[note_id] = win
         win.show()
 
-    def _check_backup_password(self):
+    def _check_backup_password(self) -> None:
         """Se crittografia backup attiva ma password non in memoria, chiedi all'utente."""
         settings = backup_utils.get_settings()
         if settings.get("encrypt_backups") and not backup_utils.has_backup_password():
             from dialogs.password import PasswordDialog
+
             dlg = PasswordDialog(self, title="Password backup")
             if dlg.result:
                 backup_utils.set_backup_password(dlg.result)
             else:
-                self.statusBar().showMessage(
-                    "Crittografia backup disattivata (nessuna password)")
+                self.statusBar().showMessage("Crittografia backup disattivata (nessuna password)")
                 settings["encrypt_backups"] = False
                 backup_utils.save_settings(settings)
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: QCloseEvent) -> None:
         for win in list(self._detached_windows.values()):
             win._on_close()
         self.notes_ctl.save_current()
@@ -117,7 +172,7 @@ class MyNotesApp(QMainWindow):
                     log.warning("Auto-backup alla chiusura fallito: %s", e)
         event.accept()
 
-    def _apply_qss(self):
+    def _apply_qss(self) -> None:
         self.setStyleSheet(f"""
             QMainWindow {{
                 background-color: {BG_DARK};

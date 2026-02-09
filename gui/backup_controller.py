@@ -1,18 +1,27 @@
 """Backup local and Google Drive (PySide6)."""
 
+from __future__ import annotations
+
+import contextlib
 import subprocess
-from PySide6.QtWidgets import QMessageBox
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QMessageBox
+
 import backup_utils
 import updater
-from dialogs import BackupSettingsDialog, BackupRestoreDialog
+from dialogs import BackupRestoreDialog, BackupSettingsDialog
+
+if TYPE_CHECKING:
+    from gui import MyNotesApp
 
 
 class BackupController:
-    def __init__(self, app):
+    def __init__(self, app: MyNotesApp) -> None:
         self.app = app
 
-    def do_backup(self):
+    def do_backup(self) -> None:
         try:
             path = backup_utils.do_local_backup()
             self.app.statusBar().showMessage(f"Backup creato: {path.split('/')[-1]}")
@@ -20,15 +29,15 @@ class BackupController:
         except Exception as e:
             QMessageBox.critical(self.app, "Errore", f"Backup fallito: {e}")
 
-    def do_gdrive_backup(self):
+    def do_gdrive_backup(self) -> None:
         self.app.statusBar().showMessage("Upload Google Drive in corso...")
 
-        def callback(success, msg):
+        def callback(success: bool, msg: str) -> None:
             QTimer.singleShot(0, lambda: self._gdrive_result(success, msg))
 
         backup_utils.do_gdrive_backup(callback)
 
-    def _gdrive_result(self, success, msg):
+    def _gdrive_result(self, success: bool, msg: str) -> None:
         if success:
             self.app.statusBar().showMessage("Backup Google Drive completato")
             QMessageBox.information(self.app, "Google Drive", msg)
@@ -36,7 +45,7 @@ class BackupController:
             self.app.statusBar().showMessage("Backup Google Drive fallito")
             QMessageBox.warning(self.app, "Google Drive", msg)
 
-    def do_restore(self):
+    def do_restore(self) -> None:
         dlg = BackupRestoreDialog(self.app)
         if not dlg.result:
             return
@@ -48,15 +57,13 @@ class BackupController:
         if success:
             info = f"{msg}\n\nBackup di sicurezza: {safety_path}\n\nL'app verra' riavviata."
             QMessageBox.information(self.app, "Ripristino completato", info)
-            try:
+            with contextlib.suppress(Exception):
                 subprocess.Popen(updater.get_restart_command())
-            except Exception:
-                pass
             self.app.close()
         else:
             QMessageBox.critical(self.app, "Errore ripristino", msg)
 
-    def open_settings(self):
+    def open_settings(self) -> None:
         BackupSettingsDialog(self.app)
-        if hasattr(self.app, '_backup_scheduler'):
+        if hasattr(self.app, "_backup_scheduler"):
             self.app._backup_scheduler.restart_if_settings_changed()

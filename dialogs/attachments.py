@@ -1,18 +1,30 @@
 """Attachment manager dialog."""
 
+from __future__ import annotations
+
 import os
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-                                QListWidget, QMessageBox, QFileDialog)
+import sqlite3
+
+from PySide6.QtWidgets import (
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QListWidget,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 import database as db
 import platform_utils
 
 
 class AttachmentDialog(QDialog):
-    def __init__(self, parent, note_id):
+    def __init__(self, parent: QWidget, note_id: int) -> None:
         super().__init__(parent)
         self.setWindowTitle("Allegati")
-        self.note_id = note_id
+        self.note_id: int = note_id
         self.resize(450, 350)
         self.setModal(True)
 
@@ -35,7 +47,7 @@ class AttachmentDialog(QDialog):
         self.listbox = QListWidget()
         layout.addWidget(self.listbox)
 
-        self.attachments = []
+        self.attachments: list[sqlite3.Row] = []
         self._load_attachments()
 
         btn_layout = QHBoxLayout()
@@ -47,31 +59,29 @@ class AttachmentDialog(QDialog):
 
         self.exec()
 
-    def _load_attachments(self):
+    def _load_attachments(self) -> None:
         self.listbox.clear()
         self.attachments = db.get_note_attachments(self.note_id)
         for att in self.attachments:
             self.listbox.addItem(f"{att['original_name']}  ({att['added_at'][:10]})")
 
-    def _add_file(self):
+    def _add_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Seleziona file da allegare")
         if path:
             db.add_attachment(self.note_id, path)
             self._load_attachments()
 
-    def _remove_file(self):
+    def _remove_file(self) -> None:
         row = self.listbox.currentRow()
         if row < 0:
             return
         att = self.attachments[row]
-        if QMessageBox.question(
-            self, "Conferma",
-            f"Rimuovere '{att['original_name']}'?"
-        ) == QMessageBox.Yes:
+        answer = QMessageBox.question(self, "Conferma", f"Rimuovere '{att['original_name']}'?")
+        if answer == QMessageBox.StandardButton.Yes:
             db.delete_attachment(att["id"])
             self._load_attachments()
 
-    def _open_file(self):
+    def _open_file(self) -> None:
         row = self.listbox.currentRow()
         if row < 0:
             return

@@ -1,12 +1,15 @@
 """Utility per gestire immagini: PIL -> QPixmap."""
 
-from PySide6.QtGui import QPixmap, QImage
-from PIL import Image
+from __future__ import annotations
+
 import io
 import os
 
+from PIL import Image
+from PySide6.QtGui import QImage, QPixmap
 
-def pil_to_pixmap(pil_image):
+
+def pil_to_pixmap(pil_image: Image.Image) -> QPixmap:
     """Convert a PIL Image to QPixmap."""
     buf = io.BytesIO()
     pil_image.save(buf, format="PNG")
@@ -16,9 +19,9 @@ def pil_to_pixmap(pil_image):
     return QPixmap.fromImage(qimg)
 
 
-def load_image_as_pixmap(path, max_width=None, max_height=None):
+def load_image_as_pixmap(path: str, max_width: int | None = None, max_height: int | None = None) -> QPixmap:
     """Load an image file and return a QPixmap, optionally resized."""
-    img = Image.open(path)
+    img: Image.Image = Image.open(path)
     if img.mode == "RGBA":
         bg = Image.new("RGB", img.size, (255, 255, 255))
         bg.paste(img, mask=img.split()[3])
@@ -32,17 +35,17 @@ def load_image_as_pixmap(path, max_width=None, max_height=None):
     return pil_to_pixmap(img)
 
 
-def resize_contain(img, max_w, max_h):
+def resize_contain(img: Image.Image, max_w: int, max_h: int) -> Image.Image:
     """Resize image to fit within max_w x max_h maintaining aspect ratio."""
     w, h = img.size
     if w <= max_w and h <= max_h:
         return img
     ratio = min(max_w / w, max_h / h)
     new_size = (int(w * ratio), int(h * ratio))
-    return img.resize(new_size, Image.LANCZOS)
+    return img.resize(new_size, Image.Resampling.LANCZOS)
 
 
-def is_image_file(path):
+def is_image_file(path: str) -> bool:
     """Check if a file path looks like an image."""
     ext = os.path.splitext(path)[1].lower()
     return ext in {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp"}
