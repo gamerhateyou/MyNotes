@@ -160,6 +160,13 @@ class NoteWindow(QMainWindow):
         self._add_fmt_btn(toolbar, "{ }", "Blocco codice", lambda: insert_md_code_block(self.text_editor))
         self._add_fmt_btn(toolbar, "---", "Linea orizzontale", lambda: insert_md_horizontal_rule(self.text_editor))
 
+        toolbar.addSeparator()
+        self._preview_btn = QPushButton("Anteprima")
+        self._preview_btn.setToolTip("Alterna Modifica / Anteprima (Ctrl+M)")
+        self._preview_btn.setStyleSheet("font-weight: bold; padding: 2px 10px;")
+        self._preview_btn.clicked.connect(self._toggle_preview)
+        toolbar.addWidget(self._preview_btn)
+
         # Editor area
         editor_widget = QWidget()
         editor_layout = QVBoxLayout(editor_widget)
@@ -201,7 +208,7 @@ class NoteWindow(QMainWindow):
         self.preview_browser.setOpenExternalLinks(True)
         self.editor_tabs.addTab(self.preview_browser, "Preview")
 
-        self.editor_tabs.currentChanged.connect(lambda idx: self._update_preview() if idx == 1 else None)
+        self.editor_tabs.currentChanged.connect(self._on_tab_changed)
 
         editor_splitter.addWidget(self.editor_tabs)
 
@@ -295,6 +302,12 @@ class NoteWindow(QMainWindow):
         """Toggle between edit and preview tabs."""
         tabs = self.editor_tabs
         tabs.setCurrentIndex(1 if tabs.currentIndex() == 0 else 0)
+
+    def _on_tab_changed(self, index: int) -> None:
+        """Update preview content and toggle button label on tab switch."""
+        if index == 1:
+            self._update_preview()
+        self._preview_btn.setText("Modifica" if index == 1 else "Anteprima")
 
     # --- Display ---
 
