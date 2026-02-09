@@ -98,6 +98,7 @@ class NoteWindow(QMainWindow):
 
         self._build_ui()
         self._display_note()
+        self.editor_tabs.setCurrentIndex(1)
 
     # --- UI ---
 
