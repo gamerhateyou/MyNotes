@@ -1,19 +1,18 @@
 """Note CRUD, categories, tags, encryption, checklist, audio markers (PySide6)."""
 
 import os
-import re
 from PySide6.QtWidgets import (QMessageBox, QMenu, QListWidgetItem)
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QTextCursor, QTextCharFormat
+from PySide6.QtGui import QColor
 from datetime import datetime
 import database as db
 import crypto_utils
 import platform_utils
 import audio_utils
 from gui.constants import (AUTO_SAVE_MS, VERSION_SAVE_EVERY,
-                           BG_SURFACE, BG_ELEVATED,
-                           FG_PRIMARY, FG_MUTED, FG_ON_ACCENT,
-                           ACCENT, DANGER, WARNING, INFO, SELECT_BG, SELECT_FG)
+                           FG_PRIMARY, FG_ON_ACCENT,
+                           ACCENT, DANGER, WARNING, SELECT_BG, SELECT_FG)
+from gui.formatting import apply_checklist_formatting, apply_audio_formatting
 from dialogs import (CategoryDialog, NoteDialog, TagManagerDialog, AttachmentDialog,
                      VersionHistoryDialog, PasswordDialog)
 
@@ -51,7 +50,9 @@ class NoteController:
         if item_trash:
             item_trash.setForeground(QColor(DANGER))
 
+        app.cat_listbox.blockSignals(True)
         app.cat_listbox.setCurrentRow(0)
+        app.cat_listbox.blockSignals(False)
 
         all_tags = db.get_all_tags()
         app.tag_combo.blockSignals(True)
@@ -95,7 +96,6 @@ class NoteController:
 
         if app.notes:
             app.note_listbox.setCurrentRow(0)
-            self.on_note_select()
         else:
             self._clear_editor()
 
@@ -584,48 +584,10 @@ class NoteController:
         self._apply_checklist_formatting()
 
     def _apply_checklist_formatting(self):
-        editor = self.app.text_editor
-        doc = editor.document()
-
-        block = doc.begin()
-        while block.isValid():
-            text = block.text().strip()
-            cursor = QTextCursor(block)
-            cursor.movePosition(QTextCursor.StartOfBlock)
-            cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
-
-            fmt = QTextCharFormat()
-            if text.startswith("[x]"):
-                fmt.setFontStrikeOut(True)
-                fmt.setForeground(QColor(FG_MUTED))
-            elif text.startswith("[ ]"):
-                fmt.setFontStrikeOut(False)
-                fmt.setForeground(QColor(FG_PRIMARY))
-            else:
-                fmt.setFontStrikeOut(False)
-                fmt.setForeground(QColor(FG_PRIMARY))
-
-            cursor.mergeCharFormat(fmt)
-            block = block.next()
+        apply_checklist_formatting(self.app.text_editor)
 
     def _apply_audio_formatting(self):
-        editor = self.app.text_editor
-        doc = editor.document()
-        pattern = re.compile(r"\[♪:[^\]]+\]")
-
-        block = doc.begin()
-        while block.isValid():
-            text = block.text()
-            for m in pattern.finditer(text):
-                cursor = QTextCursor(block)
-                cursor.movePosition(QTextCursor.StartOfBlock)
-                cursor.movePosition(QTextCursor.Right, QTextCursor.MoveAnchor, m.start())
-                cursor.movePosition(QTextCursor.Right, QTextCursor.KeepAnchor, m.end() - m.start())
-                fmt = QTextCharFormat()
-                fmt.setForeground(QColor(INFO))
-                fmt.setBackground(QColor(BG_ELEVATED))
-                cursor.mergeCharFormat(fmt)
-            block = block.next()
+        apply_audio_formatting(self.app.text_editor)
 
     def insert_audio_marker(self, att_filename, description):
         """Inserisce un marker audio alla posizione del cursore."""

@@ -58,9 +58,11 @@ class MyNotesApp(QMainWindow):
         self.backup_ctl = BackupController(self)
         self.update_ctl = UpdateController(self)
 
-        # Backup scheduler
+        # Backup: migrate legacy password, prompt if needed
+        backup_utils.migrate_legacy_password()
         self._backup_scheduler = backup_utils.BackupScheduler(self)
         self._backup_scheduler.start()
+        QTimer.singleShot(500, self._check_backup_password)
 
         # Load data
         self.notes_ctl.load_categories()
@@ -84,6 +86,20 @@ class MyNotesApp(QMainWindow):
         self._detached_windows[note_id] = win
         win.show()
 
+    def _check_backup_password(self):
+        """Se crittografia backup attiva ma password non in memoria, chiedi all'utente."""
+        settings = backup_utils.get_settings()
+        if settings.get("encrypt_backups") and not backup_utils.has_backup_password():
+            from dialogs.password import PasswordDialog
+            dlg = PasswordDialog(self, title="Password backup")
+            if dlg.result:
+                backup_utils.set_backup_password(dlg.result)
+            else:
+                self.statusBar().showMessage(
+                    "Crittografia backup disattivata (nessuna password)")
+                settings["encrypt_backups"] = False
+                backup_utils.save_settings(settings)
+
     def closeEvent(self, event):
         for win in list(self._detached_windows.values()):
             win._on_close()
@@ -91,10 +107,13 @@ class MyNotesApp(QMainWindow):
         self._backup_scheduler.stop()
         settings = backup_utils.get_settings()
         if settings.get("auto_backup", True):
-            try:
-                backup_utils.do_local_backup()
-            except Exception as e:
-                log.warning("Auto-backup alla chiusura fallito: %s", e)
+            if settings.get("encrypt_backups") and not backup_utils.has_backup_password():
+                log.warning("Auto-backup: crittografia abilitata ma password non disponibile, salto")
+            else:
+                try:
+                    backup_utils.do_local_backup()
+                except Exception as e:
+                    log.warning("Auto-backup alla chiusura fallito: %s", e)
         event.accept()
 
     def _apply_qss(self):

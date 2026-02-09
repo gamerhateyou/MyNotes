@@ -30,6 +30,7 @@ def main():
     ))
 
     logging.basicConfig(level=logging.DEBUG, handlers=[console, file_handler])
+    db._secure_file(log_path)
     db.init_db()
 
     from PySide6.QtWidgets import QApplication

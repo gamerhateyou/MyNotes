@@ -33,14 +33,14 @@ def check_pyinstaller():
 
 
 def inject_oauth_credentials():
-    """Inject OAuth credentials from env vars into backup_utils.py before build."""
+    """Inject OAuth credentials from env vars into gdrive_utils.py before build."""
     client_id = os.environ.get("MYNOTES_OAUTH_CLIENT_ID", "")
     client_secret = os.environ.get("MYNOTES_OAUTH_CLIENT_SECRET", "")
     if not client_id:
         print("NOTA: MYNOTES_OAUTH_CLIENT_ID non impostato, Google Drive non funzionera'")
         return
 
-    path = os.path.join(SCRIPT_DIR, "backup_utils.py")
+    path = os.path.join(SCRIPT_DIR, "gdrive_utils.py")
     with open(path, "r") as f:
         content = f.read()
 
@@ -55,7 +55,7 @@ def inject_oauth_credentials():
 
     with open(path, "w") as f:
         f.write(content)
-    print(f"OAuth credentials iniettati in backup_utils.py")
+    print(f"OAuth credentials iniettati in gdrive_utils.py")
 
 
 def build():
@@ -93,6 +93,7 @@ def build():
         "--hidden-import", "version",
         "--hidden-import", "crypto_utils",
         "--hidden-import", "backup_utils",
+        "--hidden-import", "gdrive_utils",
         "--hidden-import", "audio_utils",
         "--hidden-import", "error_codes",
         # PySide6

@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import sys
+import stat
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 
@@ -27,6 +28,7 @@ def _connect():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA secure_delete = ON")
     try:
         yield conn
     finally:
@@ -38,13 +40,27 @@ def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA secure_delete = ON")
     return conn
 
 
+def _secure_dir(path):
+    """Create directory with owner-only permissions (rwx------)."""
+    os.makedirs(path, exist_ok=True)
+    if sys.platform != "win32":
+        os.chmod(path, stat.S_IRWXU)
+
+
+def _secure_file(path):
+    """Set file to owner-only permissions (rw-------)."""
+    if os.path.exists(path) and sys.platform != "win32":
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+
+
 def init_db():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
-    os.makedirs(BACKUP_DIR, exist_ok=True)
+    _secure_dir(DATA_DIR)
+    _secure_dir(ATTACHMENTS_DIR)
+    _secure_dir(BACKUP_DIR)
     with _connect() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS categories (
@@ -104,6 +120,7 @@ def init_db():
         """)
         _migrate(conn)
         conn.commit()
+    _secure_file(DB_PATH)
     purge_trash(TRASH_PURGE_DAYS)
 
 

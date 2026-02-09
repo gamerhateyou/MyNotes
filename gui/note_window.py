@@ -1,7 +1,6 @@
 """Finestra dedicata per editing di una nota singola (PySide6)."""
 
 import os
-import re
 import threading
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QToolBar,
@@ -9,7 +8,7 @@ from PySide6.QtWidgets import (
     QFrame, QStatusBar, QMessageBox, QFileDialog, QPlainTextEdit
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont, QColor, QTextCursor, QTextCharFormat, QKeySequence, QShortcut
+from PySide6.QtGui import QFont, QColor, QKeySequence, QShortcut
 from datetime import datetime
 
 import database as db
@@ -22,6 +21,7 @@ from gui.constants import (UI_FONT, MONO_FONT, AUTO_SAVE_MS, VERSION_SAVE_EVERY,
                            BG_DARK, BG_SURFACE, BG_ELEVATED,
                            BORDER, FG_PRIMARY, FG_SECONDARY, FG_MUTED, FG_ON_ACCENT,
                            ACCENT, INFO, SELECT_BG, SELECT_FG)
+from gui.formatting import apply_checklist_formatting, apply_audio_formatting
 from gui.widgets import ChecklistEditor
 from annotator import AnnotationTool
 from dialogs import (TagManagerDialog, AttachmentDialog,
@@ -285,41 +285,10 @@ class NoteWindow(QMainWindow):
     # --- Checklist / Audio ---
 
     def _apply_checklist_formatting(self):
-        doc = self.text_editor.document()
-        block = doc.begin()
-        while block.isValid():
-            text = block.text().strip()
-            cursor = QTextCursor(block)
-            cursor.movePosition(QTextCursor.StartOfBlock)
-            cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
-            fmt = QTextCharFormat()
-            if text.startswith("[x]"):
-                fmt.setFontStrikeOut(True)
-                fmt.setForeground(QColor(FG_MUTED))
-            elif text.startswith("[ ]"):
-                fmt.setFontStrikeOut(False)
-                fmt.setForeground(QColor(FG_PRIMARY))
-            else:
-                fmt.setFontStrikeOut(False)
-                fmt.setForeground(QColor(FG_PRIMARY))
-            cursor.mergeCharFormat(fmt)
-            block = block.next()
+        apply_checklist_formatting(self.text_editor)
 
     def _apply_audio_formatting(self):
-        doc = self.text_editor.document()
-        pattern = re.compile(r"\[♪:[^\]]+\]")
-        block = doc.begin()
-        while block.isValid():
-            for m in pattern.finditer(block.text()):
-                cursor = QTextCursor(block)
-                cursor.movePosition(QTextCursor.StartOfBlock)
-                cursor.movePosition(QTextCursor.Right, QTextCursor.MoveAnchor, m.start())
-                cursor.movePosition(QTextCursor.Right, QTextCursor.KeepAnchor, m.end() - m.start())
-                fmt = QTextCharFormat()
-                fmt.setForeground(QColor(INFO))
-                fmt.setBackground(QColor(BG_ELEVATED))
-                cursor.mergeCharFormat(fmt)
-            block = block.next()
+        apply_audio_formatting(self.text_editor)
 
     def insert_checklist(self):
         cursor = self.text_editor.textCursor()
