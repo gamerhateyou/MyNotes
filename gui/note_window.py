@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import threading
+from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +23,8 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSplitter,
     QStatusBar,
+    QTabWidget,
+    QTextBrowser,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -42,10 +45,13 @@ from annotator import AnnotationTool
 from dialogs import AttachmentDialog, AudioRecordDialog, PasswordDialog, TagManagerDialog, VersionHistoryDialog
 from gui.constants import (
     AUTO_SAVE_MS,
+    BG_DARK,
     BG_ELEVATED,
     BG_SURFACE,
     BORDER,
+    FG_PRIMARY,
     FG_SECONDARY,
+    FONT_BASE,
     FONT_LG,
     FONT_SM,
     FONT_XL,
@@ -54,7 +60,15 @@ from gui.constants import (
     UI_FONT,
     VERSION_SAVE_EVERY,
 )
-from gui.formatting import apply_audio_formatting, apply_checklist_formatting
+from gui.formatting import (
+    apply_audio_formatting,
+    apply_checklist_formatting,
+    insert_md_code_block,
+    insert_md_horizontal_rule,
+    insert_md_line_prefix,
+    insert_md_link,
+    insert_md_wrap,
+)
 from gui.widgets import ChecklistEditor
 
 
@@ -128,6 +142,24 @@ class NoteWindow(QMainWindow):
         ins_btn.setMenu(ins_menu)
         toolbar.addWidget(ins_btn)
 
+        # Markdown formatting buttons
+        toolbar.addSeparator()
+        self._add_fmt_btn(toolbar, "G", "Grassetto", lambda: insert_md_wrap(self.text_editor, "**", "**"))
+        self._add_fmt_btn(toolbar, "I", "Corsivo", lambda: insert_md_wrap(self.text_editor, "*", "*"))
+        self._add_fmt_btn(toolbar, "S", "Barrato", lambda: insert_md_wrap(self.text_editor, "~~", "~~"))
+        self._add_fmt_btn(toolbar, "`", "Codice inline", lambda: insert_md_wrap(self.text_editor, "`", "`"))
+        toolbar.addSeparator()
+        self._add_fmt_btn(toolbar, "H1", "Titolo 1", lambda: insert_md_line_prefix(self.text_editor, "# "))
+        self._add_fmt_btn(toolbar, "H2", "Titolo 2", lambda: insert_md_line_prefix(self.text_editor, "## "))
+        self._add_fmt_btn(toolbar, "H3", "Titolo 3", lambda: insert_md_line_prefix(self.text_editor, "### "))
+        toolbar.addSeparator()
+        self._add_fmt_btn(toolbar, "Link", "Link", lambda: insert_md_link(self.text_editor))
+        self._add_fmt_btn(toolbar, "\u2022", "Lista puntata", lambda: insert_md_line_prefix(self.text_editor, "- "))
+        self._add_fmt_btn(toolbar, "1.", "Lista numerata", lambda: insert_md_line_prefix(self.text_editor, "1. "))
+        self._add_fmt_btn(toolbar, ">", "Citazione", lambda: insert_md_line_prefix(self.text_editor, "> "))
+        self._add_fmt_btn(toolbar, "{ }", "Blocco codice", lambda: insert_md_code_block(self.text_editor))
+        self._add_fmt_btn(toolbar, "---", "Linea orizzontale", lambda: insert_md_horizontal_rule(self.text_editor))
+
         # Editor area
         editor_widget = QWidget()
         editor_layout = QVBoxLayout(editor_widget)
@@ -155,12 +187,23 @@ class NoteWindow(QMainWindow):
         editor_splitter = QSplitter(Qt.Orientation.Vertical)
         editor_layout.addWidget(editor_splitter)
 
-        # Text editor
+        # Text editor + Preview tabs
+        self.editor_tabs = QTabWidget()
+        self.editor_tabs.setTabPosition(QTabWidget.TabPosition.South)
+
         self.text_editor = ChecklistEditor()
         self.text_editor.set_app(self)
         self.text_editor.setFont(QFont(MONO_FONT, FONT_LG))
         self.text_editor.textChanged.connect(self.schedule_save)
-        editor_splitter.addWidget(self.text_editor)
+        self.editor_tabs.addTab(self.text_editor, "Modifica")
+
+        self.preview_browser = QTextBrowser()
+        self.preview_browser.setOpenExternalLinks(True)
+        self.editor_tabs.addTab(self.preview_browser, "Preview")
+
+        self.editor_tabs.currentChanged.connect(lambda idx: self._update_preview() if idx == 1 else None)
+
+        editor_splitter.addWidget(self.editor_tabs)
 
         # Gallery
         gallery_widget = QWidget()
@@ -218,7 +261,40 @@ class NoteWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+Shift+S"), self, self.take_screenshot)
         QShortcut(QKeySequence("Ctrl+Shift+R"), self, self.take_screenshot_region)
         QShortcut(QKeySequence("Ctrl+Shift+A"), self, self.record_audio)
+        QShortcut(QKeySequence("Ctrl+M"), self, self._toggle_preview)
+        QShortcut(QKeySequence("Ctrl+B"), self, lambda: insert_md_wrap(self.text_editor, "**", "**"))
         QShortcut(QKeySequence("Ctrl+W"), self, self._on_close)
+
+    # --- Toolbar / Preview helpers ---
+
+    def _add_fmt_btn(self, toolbar: QToolBar, label: str, tooltip: str, callback: Callable[[], None]) -> QPushButton:
+        """Create a compact formatting button and add it to *toolbar*."""
+        btn = QPushButton(label)
+        btn.setToolTip(tooltip)
+        btn.setFixedSize(32, 26)
+        btn.setStyleSheet("font-size: 10pt; padding: 0px;")
+        btn.clicked.connect(callback)
+        toolbar.addWidget(btn)
+        return btn
+
+    def _update_preview(self) -> None:
+        """Render markdown content to HTML in the preview tab."""
+        import markdown
+
+        content = self.text_editor.toPlainText()
+        html = markdown.markdown(content, extensions=["fenced_code", "tables", "nl2br"])
+        styled = (
+            f"<div style=\"font-family: '{UI_FONT}', sans-serif; "
+            f"color: {FG_PRIMARY}; background-color: {BG_DARK}; "
+            f'font-size: {FONT_BASE + 1}pt; line-height: 1.6;">'
+            f"{html}</div>"
+        )
+        self.preview_browser.setHtml(styled)
+
+    def _toggle_preview(self) -> None:
+        """Toggle between edit and preview tabs."""
+        tabs = self.editor_tabs
+        tabs.setCurrentIndex(1 if tabs.currentIndex() == 0 else 0)
 
     # --- Display ---
 
@@ -250,6 +326,9 @@ class NoteWindow(QMainWindow):
             self._apply_audio_formatting()
 
         self.text_editor.blockSignals(False)
+
+        if self.editor_tabs.currentIndex() == 1:
+            self._update_preview()
 
         created = note["created_at"][:16].replace("T", " ")
         updated = note["updated_at"][:16].replace("T", " ")
