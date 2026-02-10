@@ -259,13 +259,14 @@ class PastebinShareDialog(QDialog):
         preview.setStyleSheet(f"color: {FG_SECONDARY}; padding: 8px; font-size: 11px;")
         layout.addWidget(preview)
 
-        # Warning privato senza user_key
+        # Warning senza user_key
         self.warning_label = QLabel("")
         self.warning_label.setStyleSheet(f"color: {WARNING}; font-size: 11px;")
         self.warning_label.setWordWrap(True)
         layout.addWidget(self.warning_label)
-        self.vis_combo.currentIndexChanged.connect(self._check_private_warning)
-        self._check_private_warning()
+        self._has_user_key = pastebin_utils.has_user_key()
+        self.vis_combo.currentIndexChanged.connect(self._update_warning)
+        self._update_warning()
 
         # Buttons
         btn_layout = QHBoxLayout()
@@ -280,12 +281,17 @@ class PastebinShareDialog(QDialog):
 
         self.exec()
 
-    def _check_private_warning(self) -> None:
+    def _update_warning(self) -> None:
         vis = self.vis_combo.currentData()
-        if vis == 2 and not pastebin_utils.has_user_key():
+        if vis == 2 and not self._has_user_key:
             self.warning_label.setText(
                 "Attenzione: i paste privati richiedono l'accesso con account Pastebin.\n"
                 "Configura username e password nelle Impostazioni Pastebin."
+            )
+        elif not self._has_user_key:
+            self.warning_label.setText(
+                "Senza account Pastebin il paste non potra' essere eliminato remotamente.\n"
+                "Il link sara' salvato in Condividi > Gestione paste."
             )
         else:
             self.warning_label.setText("")
@@ -318,6 +324,20 @@ class PastebinManageDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
+
+        # Info label
+        info_label = QLabel("Tutti i paste pubblicati tramite MyNotes sono elencati qui.")
+        info_label.setStyleSheet(f"color: {FG_SECONDARY}; font-size: 11px;")
+        layout.addWidget(info_label)
+
+        # Empty state label (shown when no shares)
+        self._empty_label = QLabel(
+            "Nessun paste pubblicato.\nUsa Condividi > Pubblica su Pastebin per pubblicare una nota."
+        )
+        self._empty_label.setAlignment(QLabel("").alignment())
+        self._empty_label.setStyleSheet(f"color: {FG_SECONDARY}; padding: 40px; font-size: 12px;")
+        self._empty_label.setWordWrap(True)
+        layout.addWidget(self._empty_label)
 
         # Table
         self.table = QTableWidget()
@@ -360,6 +380,9 @@ class PastebinManageDialog(QDialog):
 
     def _load_shares(self) -> None:
         self._shares = self._db.get_pastebin_shares()
+        has_shares = len(self._shares) > 0
+        self._empty_label.setVisible(not has_shares)
+        self.table.setVisible(has_shares)
         self.table.setRowCount(len(self._shares))
         for i, share in enumerate(self._shares):
             self.table.setItem(i, 0, QTableWidgetItem(share["paste_title"]))

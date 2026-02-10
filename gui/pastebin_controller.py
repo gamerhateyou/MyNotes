@@ -96,7 +96,10 @@ class PastebinController:
             QMessageBox.information(
                 app,
                 "Pubblicato",
-                f"Nota pubblicata su Pastebin!\n\nURL: {result}\n\n(Link copiato negli appunti)",
+                f"Nota pubblicata su Pastebin!\n\n"
+                f"URL: {result}\n\n"
+                f"(Link copiato negli appunti)\n"
+                f"Ritrova i tuoi paste in: Condividi > Gestione paste",
             )
             log.info("Paste creato: %s", result)
         else:
