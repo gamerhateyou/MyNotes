@@ -13,7 +13,15 @@ import database as db
 if TYPE_CHECKING:
     from gui import MyNotesApp
 import crypto_utils
-from dialogs import AttachmentDialog, CategoryDialog, NoteDialog, PasswordDialog, TagManagerDialog, VersionHistoryDialog
+from dialogs import (
+    AttachmentDialog,
+    BulkTagDialog,
+    CategoryDialog,
+    NoteDialog,
+    PasswordDialog,
+    TagManagerDialog,
+    VersionHistoryDialog,
+)
 from gui.constants import (
     AUTO_SAVE_MS,
     BG_DARK,
@@ -608,6 +616,8 @@ class NoteController:
             menu.addAction(f"Aggiungi {n} note ai preferiti", lambda: self._favorite_multiple(sel, True))
             menu.addAction(f"Rimuovi {n} note dai preferiti", lambda: self._favorite_multiple(sel, False))
             menu.addSeparator()
+            menu.addAction(f"Tag per {n} note...", lambda: self._tag_multiple(sel))
+            menu.addSeparator()
             move_menu = menu.addMenu("Sposta in")
             move_menu.addAction("Nessuna categoria", lambda: self._move_multiple_to_category(sel, db._UNSET))
             for cat in app.categories:
@@ -663,6 +673,15 @@ class NoteController:
         ids = [self.app.notes[i]["id"] for i in sel if i < len(self.app.notes)]
         db.set_favorite_notes(ids, value)
         self.load_notes()
+
+    def _tag_multiple(self, sel: list[int]) -> None:
+        ids = [self.app.notes[i]["id"] for i in sel if i < len(self.app.notes)]
+        if not ids:
+            return
+        dlg = BulkTagDialog(self.app, ids)
+        if dlg.result:
+            self.load_categories()
+            self.load_notes()
 
     def _move_single_note(self, note_id: int, cat_id: int | db._Sentinel) -> None:
         self.save_current()

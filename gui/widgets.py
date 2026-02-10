@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from PySide6.QtCore import QMimeData, Qt, Signal
+from PySide6.QtCore import QMimeData, QPoint, Qt, Signal
 from PySide6.QtGui import (
     QDrag,
     QDragEnterEvent,
@@ -14,7 +14,7 @@ from PySide6.QtGui import (
     QMouseEvent,
     QTextCursor,
 )
-from PySide6.QtWidgets import QListWidget, QPlainTextEdit, QTreeWidget, QWidget
+from PySide6.QtWidgets import QApplication, QListWidget, QPlainTextEdit, QTreeWidget, QWidget
 
 
 class DraggableNoteList(QListWidget):
@@ -77,7 +77,12 @@ class CategoryList(QListWidget):
 
 
 class CategoryTree(QTreeWidget):
-    """QTreeWidget that accepts note drops and category reparenting via drag-drop."""
+    """QTreeWidget that accepts note drops and category reparenting via drag-drop.
+
+    Uses DropOnly mode for reliable external drop acceptance (notes from list).
+    Category drag is handled manually via mousePressEvent/mouseMoveEvent to avoid
+    setDragEnabled(True) which interferes with external drop handling in QTreeWidget.
+    """
 
     notes_dropped = Signal(list, object)  # (note_indices, QTreeWidgetItem)
     category_dropped = Signal(int, object)  # (cat_id, target QTreeWidgetItem)
@@ -86,26 +91,36 @@ class CategoryTree(QTreeWidget):
         super().__init__(parent)
         self.setHeaderHidden(True)
         self.setIndentation(16)
-        # Don't use setDragDropMode(DragDrop) — it enables Qt's internal
-        # item-view drag-drop handling which rejects our custom MIME types.
-        # Instead configure drag and drop explicitly:
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
-        self.viewport().setAcceptDrops(True)
+        # DropOnly: accept external drops (notes), don't use built-in drag
+        self.setDragDropMode(QTreeWidget.DragDropMode.DropOnly)
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        # Category drag handled manually via mouse events
+        self._drag_start_pos: QPoint | None = None
 
-    def startDrag(self, supportedActions: Qt.DropAction) -> None:
-        item = self.currentItem()
-        if not item:
-            return
-        role_data = item.data(0, Qt.ItemDataRole.UserRole)
-        if not isinstance(role_data, int):
-            return  # Don't drag special items
-        drag = QDrag(self)
-        mime = QMimeData()
-        mime.setData("application/x-mynotes-category", str(role_data).encode())
-        drag.setMimeData(mime)
-        drag.exec(Qt.DropAction.MoveAction)
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = event.pos()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if (
+            self._drag_start_pos is not None
+            and bool(event.buttons() & Qt.MouseButton.LeftButton)
+            and (event.pos() - self._drag_start_pos).manhattanLength() >= QApplication.startDragDistance()
+        ):
+            item = self.itemAt(self._drag_start_pos)
+            if item:
+                role_data = item.data(0, Qt.ItemDataRole.UserRole)
+                if isinstance(role_data, int):
+                    drag = QDrag(self)
+                    mime = QMimeData()
+                    mime.setData("application/x-mynotes-category", str(role_data).encode())
+                    drag.setMimeData(mime)
+                    drag.exec(Qt.DropAction.MoveAction)
+                    self._drag_start_pos = None
+                    return
+            self._drag_start_pos = None
+        super().mouseMoveEvent(event)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         mime = event.mimeData()

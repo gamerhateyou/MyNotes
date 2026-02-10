@@ -8,12 +8,13 @@ from dialogs.backup import BackupRestoreDialog, BackupSettingsDialog
 from dialogs.category import CategoryDialog, NoteDialog
 from dialogs.history import VersionHistoryDialog
 from dialogs.password import PasswordDialog
-from dialogs.tags import TagManagerDialog
+from dialogs.tags import BulkTagDialog, TagManagerDialog
 
 __all__ = [
     "CategoryDialog",
     "NoteDialog",
     "TagManagerDialog",
+    "BulkTagDialog",
     "AttachmentDialog",
     "VersionHistoryDialog",
     "PasswordDialog",
