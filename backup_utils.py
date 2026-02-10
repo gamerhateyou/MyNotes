@@ -226,12 +226,15 @@ def restore_from_backup(path: str, password: str | None = None) -> tuple[bool, s
 def do_local_backup() -> str:
     settings = get_settings()
     dest = settings.get("local_backup_dir", db.BACKUP_DIR)
+    log.info("Avvio backup locale in: %s", dest)
     backup_path = db.create_backup(dest)
 
     # Verifica integrita'
     ok, msg = verify_backup_integrity(backup_path)
     if not ok:
         log.warning("Integrita' backup fallita: %s", msg)
+    else:
+        log.info("Integrita' backup verificata: OK")
 
     # Salva checksum sidecar
     save_checksum(backup_path)
@@ -257,6 +260,7 @@ def do_local_backup() -> str:
     max_backups = settings.get("max_local_backups", 10)
     retention_days = settings.get("retention_days", 90)
     _cleanup_old_backups(dest, max_backups, retention_days)
+    log.info("Pulizia backup locali completata")
 
     # Aggiorna last_backup_time
     settings["last_backup_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

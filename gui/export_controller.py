@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import html as html_mod
 import os
+import re
 import sqlite3
+import types
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -176,3 +180,107 @@ class ExportController:
             app.notes_ctl.load_notes()
             app.statusBar().showMessage(f"Importate {imported} nota/e Markdown")
             QMessageBox.information(app, "Importa Markdown", f"{imported} nota/e Markdown importate con successo!")
+
+    # ------------------------------------------------------------------
+    # Structured folder export
+    # ------------------------------------------------------------------
+
+    def export_all_structured(self) -> None:
+        """Export all notes as HTML files in a folder tree mirroring the category hierarchy."""
+        import markdown
+
+        app = self.app
+        base_dir = QFileDialog.getExistingDirectory(app, "Scegli cartella destinazione")
+        if not base_dir:
+            return
+
+        # Create unique export folder
+        folder_name = f"MyNotes_export_{date.today().isoformat()}"
+        export_dir = Path(base_dir) / folder_name
+        suffix = 1
+        while export_dir.exists():
+            suffix += 1
+            export_dir = Path(base_dir) / f"{folder_name}_{suffix}"
+        export_dir.mkdir(parents=True)
+
+        notes = db.get_all_notes()
+        if not notes:
+            app.statusBar().showMessage("Nessuna nota da esportare.")
+            return
+
+        # Track used filenames per directory to handle duplicates
+        used_names: dict[str, set[str]] = {}
+        exported = 0
+
+        for note in notes:
+            # Determine folder path from category hierarchy
+            cat_id: int | None = note["category_id"]
+            if cat_id:
+                cat_path = db.get_category_path(cat_id)
+                rel_parts = [_sanitize_filename(c["name"]) for c in cat_path]
+                note_dir = export_dir / Path(*rel_parts)
+            else:
+                note_dir = export_dir
+
+            note_dir.mkdir(parents=True, exist_ok=True)
+            dir_key = str(note_dir)
+            if dir_key not in used_names:
+                used_names[dir_key] = set()
+
+            # Pick a unique filename
+            base_name = _sanitize_filename(note["title"] or "Senza titolo")
+            file_name = base_name
+            counter = 2
+            while file_name.lower() in used_names[dir_key]:
+                file_name = f"{base_name}_{counter}"
+                counter += 1
+            used_names[dir_key].add(file_name.lower())
+
+            tags = db.get_note_tags(note["id"])
+            html_content = _build_note_html(note, tags, markdown)
+            (note_dir / f"{file_name}.html").write_text(html_content, encoding="utf-8")
+            exported += 1
+
+        app.statusBar().showMessage(f"Esportate {exported} note in {export_dir}")
+
+
+_INVALID_CHARS_RE = re.compile(r'[<>:"/\\|?*]')
+
+
+def _sanitize_filename(name: str) -> str:
+    """Remove/replace characters invalid in file/folder names."""
+    sanitized = _INVALID_CHARS_RE.sub("_", name).strip().strip(".")
+    return sanitized or "Senza_nome"
+
+
+def _build_note_html(note: sqlite3.Row, tags: list[sqlite3.Row], markdown_mod: types.ModuleType) -> str:
+    """Generate a styled standalone HTML page for a note."""
+    title = html_mod.escape(note["title"] or "Senza titolo")
+    created = (note["created_at"] or "")[:10]
+    updated = (note["updated_at"] or "")[:10]
+    tag_str = " ".join(f"#{html_mod.escape(t['name'])}" for t in tags)
+
+    if note["is_encrypted"]:
+        body = "<p><em>[Nota criptata]</em></p>"
+    else:
+        content = note["content"] or ""
+        body = markdown_mod.markdown(content, extensions=["fenced_code", "tables", "nl2br"])
+
+    return (
+        "<!DOCTYPE html>\n<html>\n<head>\n<meta charset='utf-8'>\n"
+        f"<title>{title}</title>\n"
+        "<style>\n"
+        "body { font-family: sans-serif; max-width: 800px; margin: auto; padding: 20px; }\n"
+        "h1 { color: #333; }\n"
+        ".meta { color: #888; font-size: 0.85em; margin-bottom: 1em; }\n"
+        "pre { background: #f4f4f4; padding: 12px; border-radius: 4px; overflow-x: auto; }\n"
+        "code { background: #f4f4f4; padding: 2px 4px; border-radius: 3px; }\n"
+        "table { border-collapse: collapse; }\n"
+        "th, td { border: 1px solid #ddd; padding: 8px; }\n"
+        "</style>\n</head>\n<body>\n"
+        f"<h1>{title}</h1>\n"
+        f'<div class="meta">Creata: {created} | Modificata: {updated}'
+        f"{(' | ' + tag_str) if tag_str else ''}</div>\n"
+        f"{body}\n"
+        "</body>\n</html>"
+    )

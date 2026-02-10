@@ -28,6 +28,16 @@ def main() -> None:
 
     logging.basicConfig(level=logging.DEBUG, handlers=[console, file_handler])
     db._secure_file(log_path)
+
+    # Dedicated backup log (INFO+) — successi e fallimenti
+    backup_log_path = os.path.join(db.DATA_DIR, "backup.log")
+    backup_handler = RotatingFileHandler(backup_log_path, maxBytes=256 * 1024, backupCount=1, encoding="utf-8")
+    backup_handler.setLevel(logging.INFO)
+    backup_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    )
+    logging.getLogger("backup").addHandler(backup_handler)
+    db._secure_file(backup_log_path)
     db.init_db()
 
     import qdarktheme

@@ -181,27 +181,34 @@ def do_gdrive_backup(callback: Callable[[bool, str], None] | None = None) -> Non
                     callback(False, "Google Drive non autorizzato.\nVai in Backup > Impostazioni per configurarlo.")
                 return
 
+            log.info("Avvio upload Google Drive")
+
             from backup_utils import do_local_backup, get_settings
 
             backup_path = do_local_backup()
             backup_name = os.path.basename(backup_path)
+            log.info("Backup locale creato: %s", backup_name)
 
             service = _get_gdrive_service()
+            log.info("Autenticazione Google Drive OK")
 
             settings = get_settings()
             folder_name = settings.get("gdrive_folder_name", "MyNotes Backup")
             folder_id = _get_or_create_folder(service, folder_name)
+            log.info("Cartella Drive trovata: %s", folder_name)
 
             from googleapiclient.http import MediaFileUpload
 
             file_metadata = {"name": backup_name, "parents": [folder_id]}
             media = MediaFileUpload(backup_path, mimetype="application/octet-stream")
+            log.info("Upload file in corso: %s", backup_name)
             service.files().create(body=file_metadata, media_body=media, fields="id").execute()
 
             # Cleanup vecchi backup su Google Drive
             retention_days = settings.get("retention_days", 90)
             max_gdrive = settings.get("max_gdrive_backups", 20)
             _cleanup_old_gdrive_backups(service, folder_id, max_gdrive, retention_days)
+            log.info("Pulizia backup vecchi completata")
 
             log.info("Backup caricato su Google Drive: %s/%s", folder_name, backup_name)
             if callback:

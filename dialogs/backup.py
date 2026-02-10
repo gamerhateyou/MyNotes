@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QSpinBox,
     QTabWidget,
@@ -29,7 +30,7 @@ from PySide6.QtWidgets import (
 
 import database as db
 from dialogs.password import PasswordDialog
-from gui.constants import DANGER, FG_SECONDARY, FONT_BASE, SUCCESS, UI_FONT
+from gui.constants import DANGER, FG_SECONDARY, FONT_BASE, MONO_FONT, SUCCESS, UI_FONT
 
 
 class BackupSettingsDialog(QDialog):
@@ -474,3 +475,65 @@ class BackupRestoreDialog(QDialog):
 
         self.result = {"path": tmp_path, "password": password}
         self.accept()
+
+
+class BackupLogDialog(QDialog):
+    """Visualizzatore log operazioni di backup."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Log Backup")
+        self.resize(700, 500)
+        self.setModal(True)
+
+        self._log_path = os.path.join(db.DATA_DIR, "backup.log")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
+
+        self._text = QPlainTextEdit()
+        self._text.setReadOnly(True)
+        self._text.setFont(QFont(MONO_FONT, FONT_BASE))
+        layout.addWidget(self._text)
+
+        btn_layout = QHBoxLayout()
+        refresh_btn = QPushButton("Aggiorna")
+        refresh_btn.clicked.connect(self._refresh)
+        btn_layout.addWidget(refresh_btn)
+
+        clear_btn = QPushButton("Cancella log")
+        clear_btn.clicked.connect(self._clear_log)
+        btn_layout.addWidget(clear_btn)
+
+        btn_layout.addStretch()
+
+        close_btn = QPushButton("Chiudi")
+        close_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+        self._refresh()
+        self.exec()
+
+    def _refresh(self) -> None:
+        if not os.path.exists(self._log_path):
+            self._text.setPlainText("Nessun log disponibile.")
+            return
+        try:
+            with open(self._log_path, encoding="utf-8") as f:
+                lines = f.read().splitlines()
+            # Piu' recenti in alto
+            self._text.setPlainText("\n".join(reversed(lines)))
+        except OSError:
+            self._text.setPlainText("Errore lettura log.")
+
+    def _clear_log(self) -> None:
+        answer = QMessageBox.question(self, "Conferma", "Cancellare il log backup?")
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            with open(self._log_path, "w", encoding="utf-8") as f:
+                f.write("")
+            self._refresh()
+        except OSError:
+            QMessageBox.warning(self, "Errore", "Impossibile cancellare il log.")

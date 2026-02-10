@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -11,10 +12,12 @@ from PySide6.QtWidgets import QMessageBox
 
 import backup_utils
 import updater
-from dialogs import BackupRestoreDialog, BackupSettingsDialog
+from dialogs import BackupLogDialog, BackupRestoreDialog, BackupSettingsDialog
 
 if TYPE_CHECKING:
     from gui import MyNotesApp
+
+log: logging.Logger = logging.getLogger("backup")
 
 
 class BackupController:
@@ -22,14 +25,17 @@ class BackupController:
         self.app = app
 
     def do_backup(self) -> None:
+        log.info("Backup locale richiesto dall'utente")
         try:
             path = backup_utils.do_local_backup()
             self.app.statusBar().showMessage(f"Backup creato: {path.split('/')[-1]}")
             QMessageBox.information(self.app, "Backup", f"Backup salvato:\n{path}")
         except Exception as e:
+            log.warning("Backup locale fallito: %s", e)
             QMessageBox.critical(self.app, "Errore", f"Backup fallito: {e}")
 
     def do_gdrive_backup(self) -> None:
+        log.info("Backup Google Drive richiesto dall'utente")
         self.app.statusBar().showMessage("Upload Google Drive in corso...")
 
         def callback(success: bool, msg: str) -> None:
@@ -62,6 +68,9 @@ class BackupController:
             self.app.close()
         else:
             QMessageBox.critical(self.app, "Errore ripristino", msg)
+
+    def show_backup_log(self) -> None:
+        BackupLogDialog(self.app)
 
     def open_settings(self) -> None:
         BackupSettingsDialog(self.app)
