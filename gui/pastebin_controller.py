@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import logging
-import threading
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 import database as db
@@ -58,30 +57,27 @@ class PastebinController:
             "content": content,
             **dlg.result,
         }
+
+        # Chiamata sincrona con cursore di attesa
         app.statusBar().showMessage("Pubblicazione su Pastebin in corso...")
-        self._do_share(params)
+        app.setCursor(Qt.CursorShape.WaitCursor)
+        QApplication.processEvents()
+        try:
+            success, result = pastebin_utils.create_paste(
+                content=params["content"],
+                title=params["title"],
+                visibility=params["visibility"],
+                expire_date=params["expire_date"],
+            )
+        except Exception as exc:
+            success = False
+            result = str(exc)
+            log.warning("Errore pastebin: %s", result)
+        finally:
+            app.unsetCursor()
 
-    def _do_share(self, params: dict[str, Any]) -> None:
-        def _run() -> None:
-            try:
-                success, result = pastebin_utils.create_paste(
-                    content=params["content"],
-                    title=params["title"],
-                    visibility=params["visibility"],
-                    expire_date=params["expire_date"],
-                )
-                QTimer.singleShot(0, lambda: self._share_done(success, result, params))
-            except Exception as exc:
-                err_msg = str(exc)
-                log.warning("Errore thread pastebin: %s", err_msg)
-                QTimer.singleShot(0, lambda: self._share_done(False, err_msg, params))
-
-        threading.Thread(target=_run, daemon=True).start()
-
-    def _share_done(self, success: bool, result: str, params: dict[str, Any]) -> None:
-        app = self.app
         if success:
-            # Salva nel DB locale (non deve bloccare il feedback)
+            # Salva nel DB locale
             try:
                 paste_key = pastebin_utils.extract_paste_key(result)
                 db.add_pastebin_share(
@@ -98,14 +94,11 @@ class PastebinController:
             clipboard = QApplication.clipboard()
             assert clipboard is not None
             clipboard.setText(result)
-            app.statusBar().showMessage("Pubblicato su Pastebin!")
+            app.statusBar().showMessage(f"Disponibile a: {result}")
             QMessageBox.information(
                 app,
                 "Pubblicato",
-                f"Nota pubblicata su Pastebin!\n\n"
-                f"URL: {result}\n\n"
-                f"(Link copiato negli appunti)\n"
-                f"Ritrova i tuoi paste in: Condividi > Gestione paste",
+                f"Nota pubblicata su Pastebin!\n\nDisponibile a:\n{result}\n\n(Link copiato negli appunti)",
             )
             log.info("Paste creato: %s", result)
         else:
