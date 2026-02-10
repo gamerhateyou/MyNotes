@@ -89,10 +89,8 @@ def login(api_dev_key: str, username: str, password: str) -> tuple[bool, str]:
         if resp.status_code == 200 and not text.startswith("Bad API request"):
             return True, text
         return False, text
-    except requests.ConnectionError as e:
-        raise ConnectionError(f"Impossibile contattare Pastebin: {e}") from e
-    except requests.Timeout as e:
-        raise ConnectionError(f"Timeout connessione Pastebin: {e}") from e
+    except requests.RequestException as e:
+        raise ConnectionError(f"Errore connessione Pastebin: {e}") from e
 
 
 def create_paste(
@@ -126,10 +124,8 @@ def create_paste(
         if resp.status_code == 200 and text.startswith("https://"):
             return True, text
         return False, text
-    except requests.ConnectionError as e:
-        raise ConnectionError(f"Impossibile contattare Pastebin: {e}") from e
-    except requests.Timeout as e:
-        raise ConnectionError(f"Timeout connessione Pastebin: {e}") from e
+    except requests.RequestException as e:
+        raise ConnectionError(f"Errore connessione Pastebin: {e}") from e
 
 
 def list_user_pastes(limit: int = 50) -> tuple[bool, list[dict[str, str]] | str]:
@@ -157,10 +153,8 @@ def list_user_pastes(limit: int = 50) -> tuple[bool, list[dict[str, str]] | str]
                 return True, []
             return True, _parse_paste_list(text)
         return False, text
-    except requests.ConnectionError as e:
-        raise ConnectionError(f"Impossibile contattare Pastebin: {e}") from e
-    except requests.Timeout as e:
-        raise ConnectionError(f"Timeout connessione Pastebin: {e}") from e
+    except requests.RequestException as e:
+        raise ConnectionError(f"Errore connessione Pastebin: {e}") from e
 
 
 def delete_paste(paste_key: str) -> tuple[bool, str]:
@@ -186,10 +180,8 @@ def delete_paste(paste_key: str) -> tuple[bool, str]:
         if resp.status_code == 200 and "removed" in text.lower():
             return True, text
         return False, text
-    except requests.ConnectionError as e:
-        raise ConnectionError(f"Impossibile contattare Pastebin: {e}") from e
-    except requests.Timeout as e:
-        raise ConnectionError(f"Timeout connessione Pastebin: {e}") from e
+    except requests.RequestException as e:
+        raise ConnectionError(f"Errore connessione Pastebin: {e}") from e
 
 
 def extract_paste_key(url: str) -> str:

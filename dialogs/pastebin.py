@@ -174,7 +174,7 @@ class PastebinSettingsDialog(QDialog):
             try:
                 success, result = pastebin_utils.login(api_key, username, password)
                 QTimer.singleShot(0, lambda: self._login_done(success, result))
-            except ConnectionError as exc:
+            except Exception as exc:
                 err_msg = str(exc)
                 QTimer.singleShot(0, lambda: self._login_done(False, err_msg))
 
@@ -442,7 +442,7 @@ class PastebinManageDialog(QDialog):
             try:
                 success, msg = pastebin_utils.delete_paste(paste_key)
                 QTimer.singleShot(0, lambda: self._delete_done(success, msg, share_id))
-            except ConnectionError as exc:
+            except Exception as exc:
                 err_msg = str(exc)
                 QTimer.singleShot(0, lambda: self._delete_done(False, err_msg, share_id))
 

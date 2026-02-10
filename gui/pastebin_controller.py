@@ -71,8 +71,9 @@ class PastebinController:
                     expire_date=params["expire_date"],
                 )
                 QTimer.singleShot(0, lambda: self._share_done(success, result, params))
-            except ConnectionError as exc:
+            except Exception as exc:
                 err_msg = str(exc)
+                log.warning("Errore thread pastebin: %s", err_msg)
                 QTimer.singleShot(0, lambda: self._share_done(False, err_msg, params))
 
         threading.Thread(target=_run, daemon=True).start()
@@ -80,15 +81,20 @@ class PastebinController:
     def _share_done(self, success: bool, result: str, params: dict[str, Any]) -> None:
         app = self.app
         if success:
-            paste_key = pastebin_utils.extract_paste_key(result)
-            db.add_pastebin_share(
-                note_id=params["note_id"],
-                paste_key=paste_key,
-                paste_url=result,
-                paste_title=params["title"],
-                visibility=params["visibility"],
-                expire_date=params["expire_date"],
-            )
+            # Salva nel DB locale (non deve bloccare il feedback)
+            try:
+                paste_key = pastebin_utils.extract_paste_key(result)
+                db.add_pastebin_share(
+                    note_id=params["note_id"],
+                    paste_key=paste_key,
+                    paste_url=result,
+                    paste_title=params["title"],
+                    visibility=params["visibility"],
+                    expire_date=params["expire_date"],
+                )
+            except Exception as exc:
+                log.warning("Salvataggio paste nel DB fallito: %s", exc)
+
             clipboard = QApplication.clipboard()
             assert clipboard is not None
             clipboard.setText(result)
