@@ -39,9 +39,6 @@ class NoteController:
     def __init__(self, app: MyNotesApp) -> None:
         self.app = app
         self.app.text_editor.set_app(app)
-        # Connect drag-and-drop signals from category tree
-        self.app.cat_tree.notes_dropped.connect(self._on_notes_dropped)
-        self.app.cat_tree.category_dropped.connect(self._on_category_dropped)
         # Connect inline decrypt overlay
         self.app.decrypt_btn.clicked.connect(self._inline_decrypt)
         self.app.decrypt_entry.returnPressed.connect(self._inline_decrypt)
@@ -230,69 +227,6 @@ class NoteController:
         note_id = item.data(Qt.ItemDataRole.UserRole)
         if note_id is not None:
             self.app.open_in_window(note_id)
-
-    # --- Drag-and-Drop ---
-
-    def _on_notes_dropped(self, indices: list[int], target_item: QTreeWidgetItem | None) -> None:
-        """Handle notes dropped onto category tree."""
-        app = self.app
-        if target_item is None:
-            return
-        role = target_item.data(0, Qt.ItemDataRole.UserRole)
-
-        # Ignore drop on Preferite and Cestino
-        if role in ("__favorites__", "__trash__"):
-            return
-
-        # Determine target category_id
-        target_id: int | db._Sentinel | None
-        if role == "__all__":
-            target_id = db._UNSET
-        elif isinstance(role, int):
-            target_id = role
-        else:
-            return
-
-        # Move all selected notes
-        self.save_current()
-        for idx in indices:
-            if idx < len(app.notes):
-                note_id = app.notes[idx]["id"]
-                db.update_note(note_id, category_id=target_id)
-
-        # Reload
-        app.current_note_id = None
-        self.load_categories()
-        # Re-select the target item
-        if isinstance(role, int) and role in app._cat_items:
-            app.cat_tree.setCurrentItem(app._cat_items[role])
-        self.on_category_select()
-
-    def _on_category_dropped(self, cat_id: int, target_item: QTreeWidgetItem | None) -> None:
-        """Handle category dropped onto another category (reparenting)."""
-        if target_item is None:
-            return
-        role = target_item.data(0, Qt.ItemDataRole.UserRole)
-
-        # Only allow drop on "__all__" (make root) or on user categories
-        if role in ("__favorites__", "__trash__"):
-            return
-
-        new_parent_id: int | None = None
-        if isinstance(role, int):
-            new_parent_id = role
-        # role == "__all__" means make it a root category
-
-        if not db.move_category(cat_id, new_parent_id):
-            QMessageBox.warning(
-                self.app, "Errore", "Impossibile spostare: la destinazione e' un discendente della categoria."
-            )
-            return
-
-        self.load_categories()
-        if cat_id in self.app._cat_items:
-            self.app.cat_tree.setCurrentItem(self.app._cat_items[cat_id])
-        self.on_category_select()
 
     # --- Editor ---
 

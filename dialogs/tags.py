@@ -173,14 +173,21 @@ class BulkTagDialog(QDialog):
 
         total = len(self.note_ids)
         self.tag_vars = {}
+        self._initial_partial: set[int] = set()
         for tag in all_tags:
             cb = QCheckBox(tag["name"])
-            cb.setTristate(True)
             count = tag_counts.get(tag["id"], 0)
             if count == total:
                 cb.setCheckState(Qt.CheckState.Checked)
             elif count > 0:
+                # Show partial state initially, but disable tri-state cycling
+                cb.setTristate(True)
                 cb.setCheckState(Qt.CheckState.PartiallyChecked)
+                self._initial_partial.add(tag["id"])
+                # After user clicks, skip PartiallyChecked: go straight to Checked
+                cb.stateChanged.connect(
+                    lambda state, tid=tag["id"], checkbox=cb: self._skip_partial(tid, checkbox, state)
+                )
             else:
                 cb.setCheckState(Qt.CheckState.Unchecked)
             self.tag_vars[tag["id"]] = cb
@@ -188,6 +195,14 @@ class BulkTagDialog(QDialog):
 
         if not all_tags:
             self.check_layout.addWidget(QLabel("Nessun tag creato."))
+
+    def _skip_partial(self, tid: int, cb: QCheckBox, state: int) -> None:
+        """When user clicks a partial checkbox, skip back to partial and go to Checked."""
+        if state == Qt.CheckState.PartiallyChecked.value and tid in self._initial_partial:
+            # User cycled back to partial — skip to Checked
+            self._initial_partial.discard(tid)
+            cb.setTristate(False)
+            cb.setCheckState(Qt.CheckState.Checked)
 
     def _add_tag(self) -> None:
         name = self.new_tag_entry.text().strip()
@@ -197,21 +212,24 @@ class BulkTagDialog(QDialog):
             self._load_tags()
 
     def _on_ok(self) -> None:
+        # Collect intended add/remove sets first
+        add_tags: set[int] = set()
+        remove_tags: set[int] = set()
         for tid, cb in self.tag_vars.items():
             state = cb.checkState()
             if state == Qt.CheckState.Checked:
-                # Add tag to all notes that don't have it
-                for nid in self.note_ids:
-                    current = {t["id"] for t in db.get_note_tags(nid)}
-                    if tid not in current:
-                        db.set_note_tags(nid, list(current | {tid}))
+                add_tags.add(tid)
             elif state == Qt.CheckState.Unchecked:
-                # Remove tag from all notes that have it
-                for nid in self.note_ids:
-                    current = {t["id"] for t in db.get_note_tags(nid)}
-                    if tid in current:
-                        db.set_note_tags(nid, list(current - {tid}))
+                remove_tags.add(tid)
             # PartiallyChecked = leave unchanged
+
+        # Apply to each note in one shot
+        for nid in self.note_ids:
+            current = {t["id"] for t in db.get_note_tags(nid)}
+            updated = (current | add_tags) - remove_tags
+            if updated != current:
+                db.set_note_tags(nid, list(updated))
+
         self.result = True
         self.accept()
 

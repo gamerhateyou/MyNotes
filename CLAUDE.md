@@ -5,7 +5,7 @@
 - Pattern MVC: `database.py` (model con context manager `_connect()`), `gui/` package (controller per area), `dialogs/` package (dialog views)
 - `gui/`: `__init__.py` (app principale `MyNotesApp`), `constants.py`, `layout.py`, `menu.py`, `widgets.py`, `formatting.py`, `note_controller.py`, `export_controller.py`, `media_controller.py`, `backup_controller.py`, `update_controller.py`, `note_window.py`
 - `dialogs/`: `category.py`, `tags.py`, `attachments.py`, `history.py`, `audio.py`, `password.py`, `backup.py`
-- `platform_utils.py` astrae tutte le differenze OS (file opening, screenshot, fonts)
+- `platform_utils.py` astrae tutte le differenze OS (file opening, screenshot, fonts); `_find_tool()` cerca binari in PATH + path standard
 - `image_utils.py` converte PIL -> QPixmap via PNG buffer
 - `crypto_utils.py` crittografia AES con PBKDF2 (Fernet via cryptography)
 - `backup_utils.py` backup locale + Google Drive (re-export da `gdrive_utils.py`) con OAuth integrato nella GUI
@@ -13,7 +13,15 @@
 - `_types.py` type alias condivisi (`NoteRow`, `CategoryRow`, `ProgressCallback`, etc.)
 - `annotator.py` tool di annotazione immagini con QGraphicsView
 - Dati in `data/` (db + allegati + token + settings) accanto all'eseguibile, MAI sovrascritta durante update
-- Export/import note come `.mynote` (ZIP con JSON metadata + allegati)
+- Export/import note come `.mynote` (ZIP con JSON metadata + allegati + `category_path` gerarchico)
+
+## Categorie gerarchiche
+- DB: `categories` ha `parent_id` (FK self-ref) e `sort_order`; UNIQUE su `(name, COALESCE(parent_id, 0))`
+- Sidebar: `QTreeWidget` (`app.cat_tree`), NON QListWidget; items speciali usano UserRole `"__all__"`, `"__favorites__"`, `"__trash__"` (stringhe), categorie utente usano `int` (cat_id)
+- `app._cat_items: dict[int, QTreeWidgetItem]` mappa cat_id → item per selezione/reload
+- `db.get_descendant_category_ids()` BFS per filtrare note di tutta la gerarchia
+- `db.move_category()` con check anti-circolarita; `db.delete_category_tree()` elimina ricorsivamente
+- Eliminazione con figli: dialog 3 opzioni (elimina tutto / promuovi figli / annulla)
 
 ## Comandi
 - `python3 main.py` - avvia l'app
@@ -51,6 +59,8 @@
 - Dipendenze pinnate con `==` in `requirements.txt`
 - Tutti i path relativi a APP_DIR (portabilita chiavetta USB)
 - Google Drive: OAuth credentials iniettati al build da env vars, utente clicca solo "Accedi con Google"
+- Versioning: bump minor per nuove feature, patch per bugfix; aggiornare `version.py` prima del commit
+- Commit + release: `ruff check . && ruff format --check . && mypy .` PRIMA del commit, poi `git tag vX.Y.Z && git push origin main vX.Y.Z`
 
 ## Gotcha critici
 - PySide6 widget: editor usa `QPlainTextEdit`, non Tkinter Text
@@ -61,6 +71,9 @@
 - `os.startfile` solo Windows: richiede `# type: ignore[attr-defined]`
 - `self.result` nei dialog shadowa `QDialog.result()`: richiede `# type: ignore[assignment]`
 - `raise` in `except`: sempre usare `from e` o `from None` (regola B904)
+- PyInstaller `--windowed` su Linux: `PATH` puo' essere vuoto, usare `_find_tool()` in `platform_utils.py` (non `shutil.which()` diretto)
+- mypy: `[now] + all_ids` con tipi misti (`str + list[int]`) fallisce — usare `[now, *all_ids]` (unpacking)
+- Sidebar: MAI usare indici riga per identificare categorie — leggere `item.data(0, Qt.ItemDataRole.UserRole)`
 
 ## Build & Deploy
 - GitHub Actions workflow in `.github/workflows/build.yml` builda Linux + Windows

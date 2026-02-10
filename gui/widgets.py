@@ -5,153 +5,25 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from PySide6.QtCore import QMimeData, QPoint, Qt, Signal
-from PySide6.QtGui import (
-    QDrag,
-    QDragEnterEvent,
-    QDragMoveEvent,
-    QDropEvent,
-    QMouseEvent,
-    QTextCursor,
-)
-from PySide6.QtWidgets import QApplication, QListWidget, QPlainTextEdit, QTreeWidget, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QMouseEvent, QTextCursor
+from PySide6.QtWidgets import QListWidget, QPlainTextEdit, QTreeWidget, QWidget
 
 
 class DraggableNoteList(QListWidget):
-    """QListWidget that supports drag-out with QMimeData containing note IDs."""
+    """QListWidget for the note list."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setDragEnabled(True)
-        self.setDefaultDropAction(Qt.DropAction.MoveAction)
-
-    def startDrag(self, supportedActions: Qt.DropAction) -> None:
-        items = self.selectedItems()
-        if not items:
-            return
-
-        drag = QDrag(self)
-        mime = QMimeData()
-        # Encode note indices as text (controller resolves to IDs)
-        indices = [self.row(item) for item in items]
-        mime.setText(",".join(str(i) for i in indices))
-        mime.setData("application/x-mynotes-indices", ",".join(str(i) for i in indices).encode())
-        drag.setMimeData(mime)
-        drag.exec(Qt.DropAction.MoveAction)
-
-
-class CategoryList(QListWidget):
-    """QListWidget that accepts note drops and emits a signal."""
-
-    notes_dropped = Signal(list, int)  # (note_indices, target_row)
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setAcceptDrops(True)
-
-    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        if event.mimeData().hasFormat("application/x-mynotes-indices"):
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-
-    def dragMoveEvent(self, event: QDragMoveEvent) -> None:
-        if event.mimeData().hasFormat("application/x-mynotes-indices"):
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-
-    def dropEvent(self, event: QDropEvent) -> None:
-        if not event.mimeData().hasFormat("application/x-mynotes-indices"):
-            event.ignore()
-            return
-
-        data = bytes(event.mimeData().data("application/x-mynotes-indices").data()).decode()
-        indices = [int(i) for i in data.split(",") if i]
-
-        item = self.itemAt(event.position().toPoint())
-        target_row = self.row(item) if item else -1
-
-        self.notes_dropped.emit(indices, target_row)
-        event.acceptProposedAction()
 
 
 class CategoryTree(QTreeWidget):
-    """QTreeWidget that accepts note drops and category reparenting via drag-drop.
-
-    Uses DropOnly mode for reliable external drop acceptance (notes from list).
-    Category drag is handled manually via mousePressEvent/mouseMoveEvent to avoid
-    setDragEnabled(True) which interferes with external drop handling in QTreeWidget.
-    """
-
-    notes_dropped = Signal(list, object)  # (note_indices, QTreeWidgetItem)
-    category_dropped = Signal(int, object)  # (cat_id, target QTreeWidgetItem)
+    """QTreeWidget sidebar for hierarchical categories."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setHeaderHidden(True)
         self.setIndentation(16)
-        # DropOnly: accept external drops (notes), don't use built-in drag
-        self.setDragDropMode(QTreeWidget.DragDropMode.DropOnly)
-        self.setDefaultDropAction(Qt.DropAction.MoveAction)
-        # Category drag handled manually via mouse events
-        self._drag_start_pos: QPoint | None = None
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start_pos = event.pos()
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if (
-            self._drag_start_pos is not None
-            and bool(event.buttons() & Qt.MouseButton.LeftButton)
-            and (event.pos() - self._drag_start_pos).manhattanLength() >= QApplication.startDragDistance()
-        ):
-            item = self.itemAt(self._drag_start_pos)
-            if item:
-                role_data = item.data(0, Qt.ItemDataRole.UserRole)
-                if isinstance(role_data, int):
-                    drag = QDrag(self)
-                    mime = QMimeData()
-                    mime.setData("application/x-mynotes-category", str(role_data).encode())
-                    drag.setMimeData(mime)
-                    drag.exec(Qt.DropAction.MoveAction)
-                    self._drag_start_pos = None
-                    return
-            self._drag_start_pos = None
-        super().mouseMoveEvent(event)
-
-    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        mime = event.mimeData()
-        if mime.hasFormat("application/x-mynotes-indices") or mime.hasFormat("application/x-mynotes-category"):
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-
-    def dragMoveEvent(self, event: QDragMoveEvent) -> None:
-        mime = event.mimeData()
-        if mime.hasFormat("application/x-mynotes-indices") or mime.hasFormat("application/x-mynotes-category"):
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-
-    def dropEvent(self, event: QDropEvent) -> None:
-        mime = event.mimeData()
-        target_item = self.itemAt(event.position().toPoint())
-
-        if mime.hasFormat("application/x-mynotes-indices"):
-            data = bytes(mime.data("application/x-mynotes-indices").data()).decode()
-            indices = [int(i) for i in data.split(",") if i]
-            self.notes_dropped.emit(indices, target_item)
-            event.acceptProposedAction()
-        elif mime.hasFormat("application/x-mynotes-category"):
-            data = bytes(mime.data("application/x-mynotes-category").data()).decode()
-            cat_id = int(data)
-            self.category_dropped.emit(cat_id, target_item)
-            event.acceptProposedAction()
-        else:
-            event.ignore()
 
 
 class ChecklistEditor(QPlainTextEdit):
