@@ -11,6 +11,7 @@ type CategoryRow = sqlite3.Row
 type TagRow = sqlite3.Row
 type AttachmentRow = sqlite3.Row
 type VersionRow = sqlite3.Row
+type PastebinShareRow = sqlite3.Row
 
 # Callback types
 type ProgressCallback = Callable[[int, str], None]

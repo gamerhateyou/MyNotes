@@ -90,6 +90,13 @@ def build_menu(app: MyNotesApp) -> None:
     backup_menu.addSeparator()
     backup_menu.addAction(_action(app, "Impostazioni backup...", lambda: app.backup_ctl.open_settings()))
 
+    # --- Condividi ---
+    share_menu = menubar.addMenu("Condividi")
+    share_menu.addAction(_action(app, "Pubblica su Pastebin...", lambda: app.pastebin_ctl.share_note()))
+    share_menu.addAction(_action(app, "Gestione paste...", lambda: app.pastebin_ctl.manage_pastes()))
+    share_menu.addSeparator()
+    share_menu.addAction(_action(app, "Impostazioni Pastebin...", lambda: app.pastebin_ctl.open_settings()))
+
     # --- Aiuto ---
     help_menu = menubar.addMenu("Aiuto")
     help_menu.addAction(_action(app, "Controlla aggiornamenti...", lambda: app.update_ctl.check()))

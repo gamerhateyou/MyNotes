@@ -472,6 +472,7 @@ class NoteController:
                 menu.addAction("Cripta...", self.encrypt_note)
             menu.addSeparator()
             menu.addAction("Condividi (.mynote)...", lambda: app.export_ctl.export_mynote())
+            menu.addAction("Pubblica su Pastebin...", lambda: app.pastebin_ctl.share_note())
             menu.addAction("Esporta HTML...", lambda: app.export_ctl.export_html())
             menu.addAction("Esporta PDF...", lambda: app.export_ctl.export_pdf())
             menu.addSeparator()

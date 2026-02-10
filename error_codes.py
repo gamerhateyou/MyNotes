@@ -22,6 +22,12 @@ ERROR_CODES: dict[str, str] = {
     # Export (predisposti)
     "EXP-001": "Errore esportazione nota",
     "EXP-002": "Errore importazione nota",
+    # Pastebin
+    "PBN-001": "API key Pastebin non configurata",
+    "PBN-002": "Errore connessione Pastebin",
+    "PBN-003": "Creazione paste fallita",
+    "PBN-004": "Eliminazione paste fallita",
+    "PBN-005": "Login Pastebin fallito",
 }
 
 

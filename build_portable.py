@@ -126,6 +126,12 @@ def build() -> None:
         "audio_utils",
         "--hidden-import",
         "error_codes",
+        "--hidden-import",
+        "pastebin_utils",
+        "--hidden-import",
+        "gui.pastebin_controller",
+        "--hidden-import",
+        "dialogs.pastebin",
         # PySide6 — solo moduli usati + dati runtime (plugins, platforms)
         "--hidden-import",
         "PySide6",

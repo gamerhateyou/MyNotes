@@ -48,6 +48,7 @@ from gui.layout import build_main_layout, build_toolbar
 from gui.media_controller import MediaController
 from gui.menu import build_menu
 from gui.note_controller import NoteController
+from gui.pastebin_controller import PastebinController
 from gui.update_controller import UpdateController
 from version import VERSION
 
@@ -116,6 +117,7 @@ class MyNotesApp(QMainWindow):
         self.media_ctl = MediaController(self)
         self.backup_ctl = BackupController(self)
         self.update_ctl = UpdateController(self)
+        self.pastebin_ctl = PastebinController(self)
 
         # Backup: migrate legacy password, prompt if needed
         backup_utils.migrate_legacy_password()

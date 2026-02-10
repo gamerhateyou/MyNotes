@@ -131,6 +131,19 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag_id);
             CREATE INDEX IF NOT EXISTS idx_note_versions_note ON note_versions(note_id);
             CREATE INDEX IF NOT EXISTS idx_attachments_note ON attachments(note_id);
+
+            CREATE TABLE IF NOT EXISTS pastebin_shares (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                note_id INTEGER NOT NULL,
+                paste_key TEXT NOT NULL,
+                paste_url TEXT NOT NULL,
+                paste_title TEXT NOT NULL DEFAULT '',
+                visibility INTEGER NOT NULL DEFAULT 1,
+                expire_date TEXT NOT NULL DEFAULT 'N',
+                shared_at TEXT NOT NULL,
+                FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_pastebin_shares_note ON pastebin_shares(note_id);
         """)
         _migrate(conn)
         conn.commit()
@@ -163,6 +176,24 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # Ensure unique index exists for migrated DBs:
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_cat_name_parent ON categories(name, COALESCE(parent_id, 0))")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cat_parent ON categories(parent_id)")
+
+    # Migrate pastebin_shares table for existing DBs
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if "pastebin_shares" not in tables:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pastebin_shares (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                note_id INTEGER NOT NULL,
+                paste_key TEXT NOT NULL,
+                paste_url TEXT NOT NULL,
+                paste_title TEXT NOT NULL DEFAULT '',
+                visibility INTEGER NOT NULL DEFAULT 1,
+                expire_date TEXT NOT NULL DEFAULT 'N',
+                shared_at TEXT NOT NULL,
+                FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pastebin_shares_note ON pastebin_shares(note_id)")
 
 
 # --- Categories ---
@@ -832,3 +863,48 @@ def import_note(source_path: str, category_id: int | None = None) -> int:
             conn.commit()
 
     return note_id
+
+
+# --- Pastebin Shares ---
+
+
+def add_pastebin_share(
+    note_id: int,
+    paste_key: str,
+    paste_url: str,
+    paste_title: str,
+    visibility: int,
+    expire_date: str,
+) -> int:
+    now = datetime.now().isoformat()
+    with _connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO pastebin_shares"
+            " (note_id, paste_key, paste_url, paste_title, visibility, expire_date, shared_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (note_id, paste_key, paste_url, paste_title, visibility, expire_date, now),
+        )
+        conn.commit()
+        share_id = cur.lastrowid
+        assert share_id is not None
+        return share_id
+
+
+def get_pastebin_shares(note_id: int | None = None) -> list[sqlite3.Row]:
+    with _connect() as conn:
+        if note_id is not None:
+            return conn.execute(
+                "SELECT ps.*, n.title AS note_title FROM pastebin_shares ps"
+                " JOIN notes n ON ps.note_id = n.id WHERE ps.note_id = ? ORDER BY ps.shared_at DESC",
+                (note_id,),
+            ).fetchall()
+        return conn.execute(
+            "SELECT ps.*, n.title AS note_title FROM pastebin_shares ps"
+            " JOIN notes n ON ps.note_id = n.id ORDER BY ps.shared_at DESC"
+        ).fetchall()
+
+
+def delete_pastebin_share(share_id: int) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM pastebin_shares WHERE id = ?", (share_id,))
+        conn.commit()
