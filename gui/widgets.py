@@ -86,10 +86,13 @@ class CategoryTree(QTreeWidget):
         super().__init__(parent)
         self.setHeaderHidden(True)
         self.setIndentation(16)
-        self.setAcceptDrops(True)
+        # Don't use setDragDropMode(DragDrop) — it enables Qt's internal
+        # item-view drag-drop handling which rejects our custom MIME types.
+        # Instead configure drag and drop explicitly:
         self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.viewport().setAcceptDrops(True)
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
-        self.setDragDropMode(QTreeWidget.DragDropMode.DragDrop)
 
     def startDrag(self, supportedActions: Qt.DropAction) -> None:
         item = self.currentItem()

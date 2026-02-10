@@ -547,6 +547,20 @@ class NoteController:
             menu.addAction("Esporta HTML...", lambda: app.export_ctl.export_html())
             menu.addAction("Esporta PDF...", lambda: app.export_ctl.export_pdf())
             menu.addSeparator()
+            # Submenu "Sposta in" per singola nota
+            move_menu = menu.addMenu("Sposta in")
+            note_id = app.current_note_id
+            move_menu.addAction(
+                "Nessuna categoria",
+                lambda nid=note_id: self._move_single_note(nid, db._UNSET),
+            )
+            for cat in app.categories:
+                path = db.get_category_path(cat["id"])
+                display = " > ".join(r["name"] for r in path)
+                move_menu.addAction(
+                    display,
+                    lambda nid=note_id, cid=cat["id"]: self._move_single_note(nid, cid),
+                )
             menu.addAction("Sposta nel cestino", self.delete_note)
 
         menu.popup(app.note_listbox.mapToGlobal(pos))
@@ -648,6 +662,12 @@ class NoteController:
     def _favorite_multiple(self, sel: list[int], value: bool) -> None:
         ids = [self.app.notes[i]["id"] for i in sel if i < len(self.app.notes)]
         db.set_favorite_notes(ids, value)
+        self.load_notes()
+
+    def _move_single_note(self, note_id: int, cat_id: int | db._Sentinel) -> None:
+        self.save_current()
+        db.update_note(note_id, category_id=cat_id)
+        self.load_categories()
         self.load_notes()
 
     def _move_multiple_to_category(self, sel: list[int], cat_id: int | db._Sentinel) -> None:
