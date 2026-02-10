@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import threading
 import webbrowser
 from typing import Any
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDialog,
     QFrame,
@@ -169,19 +169,18 @@ class PastebinSettingsDialog(QDialog):
         self.verify_btn.setEnabled(False)
         self.login_status.setText("Verifica in corso...")
         self.login_status.setStyleSheet(f"color: {FG_SECONDARY};")
+        self.setCursor(Qt.CursorShape.WaitCursor)
+        QApplication.processEvents()
 
-        def _do_login() -> None:
-            try:
-                success, result = pastebin_utils.login(api_key, username, password)
-                QTimer.singleShot(0, lambda: self._login_done(success, result))
-            except Exception as exc:
-                err_msg = str(exc)
-                QTimer.singleShot(0, lambda: self._login_done(False, err_msg))
+        try:
+            success, result = pastebin_utils.login(api_key, username, password)
+        except Exception as exc:
+            success = False
+            result = str(exc)
+        finally:
+            self.unsetCursor()
+            self.verify_btn.setEnabled(True)
 
-        threading.Thread(target=_do_login, daemon=True).start()
-
-    def _login_done(self, success: bool, result: str) -> None:
-        self.verify_btn.setEnabled(True)
         if success:
             self.settings["api_user_key"] = result
             self.login_status.setText("Accesso verificato!")
@@ -434,22 +433,19 @@ class PastebinManageDialog(QDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        self.setEnabled(False)
         paste_key = pastebin_utils.extract_paste_key(share["paste_url"])
         share_id = share["id"]
 
-        def _do_delete() -> None:
-            try:
-                success, msg = pastebin_utils.delete_paste(paste_key)
-                QTimer.singleShot(0, lambda: self._delete_done(success, msg, share_id))
-            except Exception as exc:
-                err_msg = str(exc)
-                QTimer.singleShot(0, lambda: self._delete_done(False, err_msg, share_id))
+        self.setCursor(Qt.CursorShape.WaitCursor)
+        QApplication.processEvents()
+        try:
+            success, msg = pastebin_utils.delete_paste(paste_key)
+        except Exception as exc:
+            success = False
+            msg = str(exc)
+        finally:
+            self.unsetCursor()
 
-        threading.Thread(target=_do_delete, daemon=True).start()
-
-    def _delete_done(self, success: bool, msg: str, share_id: int) -> None:
-        self.setEnabled(True)
         if success:
             self._db.delete_pastebin_share(share_id)
             self._load_shares()
