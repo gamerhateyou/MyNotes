@@ -44,7 +44,6 @@ def build_menu(app: MyNotesApp) -> None:
     )
     cat_menu.addAction(_action(app, "Rinomina Categoria", lambda: app.notes_ctl.rename_category(), "F2"))
     cat_menu.addAction(_action(app, "Elimina Categoria", lambda: app.notes_ctl.delete_category()))
-    cat_menu.addAction(_action(app, "Svuota Categoria", lambda: app.notes_ctl.empty_category()))
 
     # --- Nota ---
     note_menu = menubar.addMenu("Nota")

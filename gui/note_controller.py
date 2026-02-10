@@ -391,26 +391,11 @@ class NoteController:
             menu.addAction("Nuova Sottocategoria", lambda: self.new_subcategory(cat_id))
             menu.addSeparator()
             menu.addAction("Rinomina", self.rename_category)
-            menu.addAction("Elimina", self.delete_category)
-            menu.addAction("Svuota categoria", self.empty_category)
-            # Submenu "Sposta note in"
-            move_notes_menu = menu.addMenu("Sposta note in")
-            move_notes_menu.addAction(
-                "Nessuna categoria", lambda cid=cat_id: self._move_category_notes_to(cid, db._UNSET)
-            )
-            for cat in app.categories:
-                if cat["id"] != cat_id:
-                    path = db.get_category_path(cat["id"])
-                    display = " > ".join(r["name"] for r in path)
-                    move_notes_menu.addAction(
-                        display,
-                        lambda from_id=cat_id, to_id=cat["id"]: self._move_category_notes_to(from_id, to_id),
-                    )
-            # Submenu "Sposta categoria in"
+            # Submenu "Sposta in"
             descendants = db.get_descendant_category_ids(cat_id)
             excluded = {cat_id} | set(descendants)
-            move_cat_menu = menu.addMenu("Sposta categoria in")
-            move_cat_menu.addAction("Radice (nessun genitore)", lambda cid=cat_id: self._reparent_category(cid, None))
+            move_cat_menu = menu.addMenu("Sposta in")
+            move_cat_menu.addAction("(Radice)", lambda cid=cat_id: self._reparent_category(cid, None))
             for cat in app.categories:
                 if cat["id"] not in excluded:
                     path = db.get_category_path(cat["id"])
@@ -419,6 +404,7 @@ class NoteController:
                         display,
                         lambda cid=cat_id, pid=cat["id"]: self._reparent_category(cid, pid),
                     )
+            menu.addAction("Elimina", self.delete_category)
             menu.addSeparator()
 
         menu.addAction("Nuova Categoria", self.new_category)
@@ -631,44 +617,6 @@ class NoteController:
         self.load_categories()
         self.load_notes()
 
-    def empty_category(self) -> None:
-        app = self.app
-        if app.current_category_id is None:
-            QMessageBox.information(app, "Info", "Seleziona una categoria dalla sidebar.")
-            return
-        cat = next((c for c in app.categories if c["id"] == app.current_category_id), None)
-        if not cat:
-            return
-        note_ids = db.get_note_ids_by_category(app.current_category_id, include_descendants=True)
-        if not note_ids:
-            QMessageBox.information(app, "Info", f"La categoria '{cat['name']}' e' gia' vuota.")
-            return
-        if (
-            QMessageBox.question(
-                app,
-                "Svuota Categoria",
-                f"Spostare {len(note_ids)} nota/e di '{cat['name']}' (e sottocategorie) nel cestino?",
-            )
-            != QMessageBox.StandardButton.Yes
-        ):
-            return
-        self.save_current()
-        db.soft_delete_notes(note_ids)
-        app.current_note_id = None
-        self.load_categories()
-        self.load_notes()
-
-    def _move_category_notes_to(self, from_cat_id: int, to_cat_id: int | db._Sentinel) -> None:
-        note_ids = db.get_note_ids_by_category(from_cat_id)
-        if not note_ids:
-            QMessageBox.information(self.app, "Info", "La categoria e' vuota.")
-            return
-        self.save_current()
-        db.move_notes_to_category(note_ids, to_cat_id)
-        self.app.current_note_id = None
-        self.load_categories()
-        self.load_notes()
-
     # --- Checklist ---
 
     def insert_checklist(self) -> None:
@@ -840,44 +788,28 @@ class NoteController:
             return
 
         descendants = db.get_descendant_category_ids(app.current_category_id)
-        note_ids = db.get_note_ids_by_category(app.current_category_id, include_descendants=True)
+        own_notes = db.get_note_ids_by_category(app.current_category_id)
         has_children = len(descendants) > 0
 
-        if note_ids or has_children:
-            msg = f"La categoria '{cat['name']}'"
-            parts: list[str] = []
-            if note_ids:
-                parts.append(f"contiene {len(note_ids)} nota/e")
+        if own_notes or has_children:
+            msg = f"Eliminare '{cat['name']}'?\n\n"
+            if own_notes:
+                msg += f"Le {len(own_notes)} note verranno spostate nel cestino.\n"
             if has_children:
-                parts.append(f"ha {len(descendants)} sottocategoria/e")
-            msg += " " + " e ".join(parts) + ".\n\n"
-            msg += "Si = Elimina tutto (categoria, sottocategorie e note nel cestino)\n"
-            msg += "No = Promuovi sottocategorie al livello superiore ed elimina solo questa\n"
-            msg += "Annulla = Non fare nulla"
-
-            btn = QMessageBox.question(
-                app,
-                "Elimina Categoria",
-                msg,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel,
-            )
-            if btn == QMessageBox.StandardButton.Yes:
-                db.delete_category_tree(app.current_category_id)
-            elif btn == QMessageBox.StandardButton.No:
-                db.promote_children(app.current_category_id)
-                # Soft-delete notes in this specific category only
-                own_notes = db.get_note_ids_by_category(app.current_category_id)
-                if own_notes:
-                    db.soft_delete_notes(own_notes)
-                db.delete_category(app.current_category_id)
-            else:
-                return
+                msg += "Le sottocategorie verranno mantenute al livello superiore.\n"
         else:
-            reply = QMessageBox.question(app, "Conferma", f"Eliminare la categoria '{cat['name']}'?")
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-            db.delete_category(app.current_category_id)
+            msg = f"Eliminare la categoria '{cat['name']}'?"
+
+        reply = QMessageBox.question(app, "Elimina Categoria", msg)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self.save_current()
+        if has_children:
+            db.promote_children(app.current_category_id)
+        if own_notes:
+            db.soft_delete_notes(own_notes)
+        db.delete_category(app.current_category_id)
 
         app.current_category_id = None
         self.load_categories()
