@@ -76,8 +76,13 @@ def init_db() -> None:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE
+                name TEXT NOT NULL,
+                parent_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+                sort_order INTEGER DEFAULT 0
             );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_cat_name_parent
+                ON categories(name, COALESCE(parent_id, 0));
+            CREATE INDEX IF NOT EXISTS idx_cat_parent ON categories(parent_id);
             CREATE TABLE IF NOT EXISTS notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
@@ -149,22 +154,37 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if col not in existing:
             conn.execute(f"ALTER TABLE notes ADD COLUMN {col} {col_type}")
 
+    # Migrate categories table: add parent_id and sort_order
+    cat_cols = {row[1] for row in conn.execute("PRAGMA table_info(categories)").fetchall()}
+    if "parent_id" not in cat_cols:
+        conn.execute("ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id) ON DELETE SET NULL")
+    if "sort_order" not in cat_cols:
+        conn.execute("ALTER TABLE categories ADD COLUMN sort_order INTEGER DEFAULT 0")
+    # Drop old UNIQUE on name alone (if present) — sqlite can't drop constraints,
+    # but the new idx_cat_name_parent index is created in init_db's executescript.
+    # Ensure unique index exists for migrated DBs:
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_cat_name_parent ON categories(name, COALESCE(parent_id, 0))")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cat_parent ON categories(parent_id)")
+
 
 # --- Categories ---
 
 
 def get_all_categories() -> list[sqlite3.Row]:
     with _connect() as conn:
-        return conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+        return conn.execute(
+            "SELECT * FROM categories ORDER BY parent_id IS NOT NULL, parent_id, sort_order, name"
+        ).fetchall()
 
 
-def add_category(name: str) -> None:
+def add_category(name: str, parent_id: int | None = None) -> int | None:
     with _connect() as conn:
         try:
-            conn.execute("INSERT INTO categories (name) VALUES (?)", (name,))
+            cur = conn.execute("INSERT INTO categories (name, parent_id) VALUES (?, ?)", (name, parent_id))
             conn.commit()
+            return cur.lastrowid
         except sqlite3.IntegrityError:
-            pass
+            return None
 
 
 def rename_category(cat_id: int, new_name: str) -> None:
@@ -180,6 +200,82 @@ def delete_category(cat_id: int) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM categories WHERE id = ?", (cat_id,))
         conn.commit()
+
+
+def get_descendant_category_ids(cat_id: int) -> list[int]:
+    """BFS to find all descendant category IDs."""
+    with _connect() as conn:
+        queue = [cat_id]
+        descendants: list[int] = []
+        while queue:
+            current = queue.pop(0)
+            children = conn.execute("SELECT id FROM categories WHERE parent_id = ?", (current,)).fetchall()
+            for child in children:
+                descendants.append(child["id"])
+                queue.append(child["id"])
+        return descendants
+
+
+def move_category(cat_id: int, new_parent_id: int | None) -> bool:
+    """Move category to a new parent. Returns False if circular."""
+    if new_parent_id == cat_id:
+        return False
+    if new_parent_id is not None:
+        descendants = get_descendant_category_ids(cat_id)
+        if new_parent_id in descendants:
+            return False
+    with _connect() as conn:
+        conn.execute("UPDATE categories SET parent_id = ? WHERE id = ?", (new_parent_id, cat_id))
+        conn.commit()
+    return True
+
+
+def delete_category_tree(cat_id: int) -> None:
+    """Delete category + all descendants, soft-delete their notes."""
+    descendants = get_descendant_category_ids(cat_id)
+    all_ids = [cat_id] + descendants
+    # Soft-delete all notes in these categories
+    with _connect() as conn:
+        if all_ids:
+            placeholders = ",".join("?" * len(all_ids))
+            now = datetime.now().isoformat()
+            conn.execute(
+                "UPDATE notes SET is_deleted = 1, deleted_at = ?"
+                f" WHERE category_id IN ({placeholders}) AND is_deleted = 0",
+                [now, *all_ids],
+            )
+            # Delete categories (children first to avoid FK issues)
+            for cid in reversed(all_ids):
+                conn.execute("DELETE FROM categories WHERE id = ?", (cid,))
+        conn.commit()
+
+
+def promote_children(cat_id: int) -> None:
+    """Move children of cat_id to cat_id's parent."""
+    with _connect() as conn:
+        cat = conn.execute("SELECT parent_id FROM categories WHERE id = ?", (cat_id,)).fetchone()
+        if not cat:
+            return
+        parent_id = cat["parent_id"]
+        conn.execute("UPDATE categories SET parent_id = ? WHERE parent_id = ?", (parent_id, cat_id))
+        conn.commit()
+
+
+def get_category_path(cat_id: int) -> list[sqlite3.Row]:
+    """Return path from root to this category (list of Row)."""
+    with _connect() as conn:
+        path: list[sqlite3.Row] = []
+        current_id: int | None = cat_id
+        visited: set[int] = set()
+        while current_id is not None and current_id not in visited:
+            visited.add(current_id)
+            row = conn.execute("SELECT * FROM categories WHERE id = ?", (current_id,)).fetchone()
+            if not row:
+                break
+            path.append(row)
+            current_id = row["parent_id"]
+        path.reverse()
+        return path
 
 
 # --- Notes ---
@@ -207,8 +303,11 @@ def get_all_notes(
             conditions.append("nt.tag_id = ?")
             params.append(tag_id)
         if category_id is not None:
-            conditions.append("n.category_id = ?")
-            params.append(category_id)
+            descendant_ids = get_descendant_category_ids(category_id)
+            all_cat_ids = [category_id] + descendant_ids
+            cat_placeholders = ",".join("?" * len(all_cat_ids))
+            conditions.append(f"n.category_id IN ({cat_placeholders})")
+            params.extend(all_cat_ids)
         if search_query:
             conditions.append("(n.title LIKE ? OR n.content LIKE ?)")
             like = f"%{search_query}%"
@@ -414,9 +513,15 @@ def move_notes_to_category(note_ids: list[int], category_id: int | _Sentinel | N
         conn.commit()
 
 
-def get_note_ids_by_category(cat_id: int) -> list[int]:
+def get_note_ids_by_category(cat_id: int, include_descendants: bool = False) -> list[int]:
+    all_ids = [cat_id]
+    if include_descendants:
+        all_ids += get_descendant_category_ids(cat_id)
     with _connect() as conn:
-        rows = conn.execute("SELECT id FROM notes WHERE category_id = ? AND is_deleted = 0", (cat_id,)).fetchall()
+        placeholders = ",".join("?" * len(all_ids))
+        rows = conn.execute(
+            f"SELECT id FROM notes WHERE category_id IN ({placeholders}) AND is_deleted = 0", all_ids
+        ).fetchall()
         return [r["id"] for r in rows]
 
 
@@ -622,6 +727,24 @@ def get_backups(backup_dir: str | None = None) -> list[dict[str, Any]]:
 # --- Export / Import (.mynote) ---
 
 
+def _ensure_category_path(path: list[str]) -> int | None:
+    """Ensure category hierarchy exists and return leaf category ID."""
+    parent_id: int | None = None
+    with _connect() as conn:
+        for name in path:
+            row = conn.execute(
+                "SELECT id FROM categories WHERE name = ? AND COALESCE(parent_id, 0) = ?",
+                (name, parent_id or 0),
+            ).fetchone()
+            if row:
+                parent_id = row["id"]
+            else:
+                cur = conn.execute("INSERT INTO categories (name, parent_id) VALUES (?, ?)", (name, parent_id))
+                conn.commit()
+                parent_id = cur.lastrowid
+    return parent_id
+
+
 def export_note(note_id: int, dest_path: str) -> str:
     import json
     import zipfile
@@ -633,6 +756,11 @@ def export_note(note_id: int, dest_path: str) -> str:
     tags = get_note_tags(note_id)
     attachments = get_note_attachments(note_id)
 
+    # Build category path for hierarchical export
+    category_path: list[str] = []
+    if note["category_id"]:
+        category_path = [r["name"] for r in get_category_path(note["category_id"])]
+
     metadata = {
         "title": note["title"],
         "content": note["content"],
@@ -643,6 +771,7 @@ def export_note(note_id: int, dest_path: str) -> str:
         "is_encrypted": note["is_encrypted"],
         "tags": [t["name"] for t in tags],
         "attachments": [a["original_name"] for a in attachments],
+        "category_path": category_path,
     }
 
     with zipfile.ZipFile(dest_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -663,7 +792,14 @@ def import_note(source_path: str, category_id: int | None = None) -> int:
 
     with zipfile.ZipFile(source_path, "r") as zf:
         meta = json.loads(zf.read("note.json"))
-        note_id = add_note(meta["title"], meta.get("content", ""), category_id)
+
+        # Recreate category hierarchy from category_path if present
+        effective_category_id = category_id
+        cat_path = meta.get("category_path", [])
+        if cat_path and category_id is None:
+            effective_category_id = _ensure_category_path(cat_path)
+
+        note_id = add_note(meta["title"], meta.get("content", ""), effective_category_id)
 
         # Restore flags + tags in single connection
         with _connect() as conn:

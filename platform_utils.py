@@ -10,6 +10,24 @@ IS_WINDOWS: bool = sys.platform == "win32"
 IS_LINUX: bool = sys.platform.startswith("linux")
 IS_MAC: bool = sys.platform == "darwin"
 
+# Standard system paths to check when PATH is restricted (e.g. PyInstaller --windowed)
+_SYSTEM_BIN_DIRS: tuple[str, ...] = ("/usr/bin", "/usr/local/bin", "/bin")
+
+
+def _find_tool(name: str) -> str | None:
+    """Find a system tool by name, checking PATH and common system locations."""
+    import shutil
+
+    path = shutil.which(name)
+    if path:
+        return path
+    # Frozen builds may have restricted PATH; check standard locations
+    for prefix in _SYSTEM_BIN_DIRS:
+        candidate = os.path.join(prefix, name)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
 
 def open_file(path: str) -> bool:
     """Apri un file con l'applicazione predefinita del sistema."""
@@ -121,30 +139,31 @@ def _screenshot_pil(save_path: str) -> bool:
 
 def _screenshot_linux(save_path: str) -> bool:
     """Screenshot su Linux con tool nativi."""
-    import shutil
-
     # Wayland: grim
-    if shutil.which("grim"):
+    grim = _find_tool("grim")
+    if grim:
         try:
-            r = subprocess.run(["grim", save_path], capture_output=True, timeout=15)
+            r = subprocess.run([grim, save_path], capture_output=True, timeout=15)
             if r.returncode == 0 and os.path.exists(save_path):
                 return True
         except Exception:
             pass
 
     # GNOME screenshot
-    if shutil.which("gnome-screenshot"):
+    gnome_ss = _find_tool("gnome-screenshot")
+    if gnome_ss:
         try:
-            r = subprocess.run(["gnome-screenshot", "-f", save_path], capture_output=True, timeout=15)
+            r = subprocess.run([gnome_ss, "-f", save_path], capture_output=True, timeout=15)
             if r.returncode == 0 and os.path.exists(save_path):
                 return True
         except Exception:
             pass
 
     # X11: scrot
-    if shutil.which("scrot"):
+    scrot = _find_tool("scrot")
+    if scrot:
         try:
-            r = subprocess.run(["scrot", save_path], capture_output=True, timeout=15)
+            r = subprocess.run([scrot, save_path], capture_output=True, timeout=15)
             if r.returncode == 0 and os.path.exists(save_path):
                 return True
         except Exception:
@@ -156,33 +175,35 @@ def _screenshot_linux(save_path: str) -> bool:
 
 def _screenshot_linux_region(save_path: str) -> bool:
     """Screenshot regione su Linux."""
-    import shutil
-
     # Wayland: grim + slurp
-    if shutil.which("grim") and shutil.which("slurp"):
+    grim = _find_tool("grim")
+    slurp_bin = _find_tool("slurp")
+    if grim and slurp_bin:
         try:
-            slurp = subprocess.run(["slurp"], capture_output=True, text=True, timeout=60)
-            if slurp.returncode == 0:
-                region = slurp.stdout.strip()
-                r = subprocess.run(["grim", "-g", region, save_path], capture_output=True, timeout=15)
+            slurp_proc = subprocess.run([slurp_bin], capture_output=True, text=True, timeout=60)
+            if slurp_proc.returncode == 0:
+                region = slurp_proc.stdout.strip()
+                r = subprocess.run([grim, "-g", region, save_path], capture_output=True, timeout=15)
                 if r.returncode == 0 and os.path.exists(save_path):
                     return True
         except Exception:
             pass
 
     # GNOME screenshot area
-    if shutil.which("gnome-screenshot"):
+    gnome_ss = _find_tool("gnome-screenshot")
+    if gnome_ss:
         try:
-            r = subprocess.run(["gnome-screenshot", "-a", "-f", save_path], capture_output=True, timeout=60)
+            r = subprocess.run([gnome_ss, "-a", "-f", save_path], capture_output=True, timeout=60)
             if r.returncode == 0 and os.path.exists(save_path):
                 return True
         except Exception:
             pass
 
     # scrot -s
-    if shutil.which("scrot"):
+    scrot = _find_tool("scrot")
+    if scrot:
         try:
-            r = subprocess.run(["scrot", "-s", save_path], capture_output=True, timeout=60)
+            r = subprocess.run([scrot, "-s", save_path], capture_output=True, timeout=60)
             if r.returncode == 0 and os.path.exists(save_path):
                 return True
         except Exception:

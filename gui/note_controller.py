@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QListWidgetItem, QMenu, QMessageBox
+from PySide6.QtWidgets import QListWidgetItem, QMenu, QMessageBox, QTreeWidgetItem
 
 import database as db
 
@@ -31,8 +31,9 @@ class NoteController:
     def __init__(self, app: MyNotesApp) -> None:
         self.app = app
         self.app.text_editor.set_app(app)
-        # Connect drag-and-drop signal from category list
-        self.app.cat_listbox.notes_dropped.connect(self._on_notes_dropped)
+        # Connect drag-and-drop signals from category tree
+        self.app.cat_tree.notes_dropped.connect(self._on_notes_dropped)
+        self.app.cat_tree.category_dropped.connect(self._on_category_dropped)
         # Connect inline decrypt overlay
         self.app.decrypt_btn.clicked.connect(self._inline_decrypt)
         self.app.decrypt_entry.returnPressed.connect(self._inline_decrypt)
@@ -41,30 +42,51 @@ class NoteController:
 
     def load_categories(self) -> None:
         app = self.app
-        app.cat_listbox.clear()
+        tree = app.cat_tree
+        tree.clear()
+        app._cat_items.clear()
 
-        app.cat_listbox.addItem("  Tutte le note")
-        app.cat_listbox.addItem("  Preferite")
+        # Special items (top-level)
+        item_all = QTreeWidgetItem(tree, ["Tutte le note"])
+        item_all.setData(0, Qt.ItemDataRole.UserRole, "__all__")
 
+        item_fav = QTreeWidgetItem(tree, ["Preferite"])
+        item_fav.setData(0, Qt.ItemDataRole.UserRole, "__favorites__")
+        item_fav.setForeground(0, QColor(WARNING))
+
+        # Build category tree
         app.categories = db.get_all_categories()
-        for cat in app.categories:
-            app.cat_listbox.addItem(f"  {cat['name']}")
+        # Multi-pass: first root categories, then children iteratively
+        remaining = list(app.categories)
+        for _pass in range(20):
+            still_remaining = []
+            for cat in remaining:
+                parent_id = cat["parent_id"]
+                if parent_id is None:
+                    item = QTreeWidgetItem(tree, [cat["name"]])
+                    item.setData(0, Qt.ItemDataRole.UserRole, cat["id"])
+                    app._cat_items[cat["id"]] = item
+                elif parent_id in app._cat_items:
+                    parent_item = app._cat_items[parent_id]
+                    item = QTreeWidgetItem(parent_item, [cat["name"]])
+                    item.setData(0, Qt.ItemDataRole.UserRole, cat["id"])
+                    app._cat_items[cat["id"]] = item
+                else:
+                    still_remaining.append(cat)
+            remaining = still_remaining
+            if not remaining:
+                break
 
+        # Cestino (always last)
         trash_count = db.get_trash_count()
-        app.cat_listbox.addItem(f"  Cestino ({trash_count})")
+        item_trash = QTreeWidgetItem(tree, [f"Cestino ({trash_count})"])
+        item_trash.setData(0, Qt.ItemDataRole.UserRole, "__trash__")
+        item_trash.setForeground(0, QColor(DANGER))
 
-        last_idx = app.cat_listbox.count() - 1
-        # Color the Preferite item
-        item_fav = app.cat_listbox.item(1)
-        if item_fav:
-            item_fav.setForeground(QColor(WARNING))
-        # Color the Cestino item
-        item_trash = app.cat_listbox.item(last_idx)
-        if item_trash:
-            item_trash.setForeground(QColor(DANGER))
+        tree.expandAll()
+        tree.setCurrentItem(item_all)
 
-        app.cat_listbox.setCurrentRow(0)
-
+        # Tags combo
         all_tags = db.get_all_tags()
         app.tag_combo.blockSignals(True)
         app.tag_combo.clear()
@@ -132,21 +154,22 @@ class NoteController:
 
     def on_category_select(self) -> None:
         app = self.app
-        row = app.cat_listbox.currentRow()
-        if row < 0:
+        item = app.cat_tree.currentItem()
+        if not item:
             return
+        role = item.data(0, Qt.ItemDataRole.UserRole)
         app.show_trash = False
         app.show_favorites = False
         app.current_category_id = None
 
-        if row == 0:
+        if role == "__all__":
             pass
-        elif row == 1:
+        elif role == "__favorites__":
             app.show_favorites = True
-        elif row == app.cat_listbox.count() - 1:
+        elif role == "__trash__":
             app.show_trash = True
-        else:
-            app.current_category_id = app.categories[row - 2]["id"]
+        elif isinstance(role, int):
+            app.current_category_id = role
         self._flush_save()
         self.load_notes()
 
@@ -202,19 +225,25 @@ class NoteController:
 
     # --- Drag-and-Drop ---
 
-    def _on_notes_dropped(self, indices: list[int], target_row: int) -> None:
-        """Handle notes dropped onto category list."""
+    def _on_notes_dropped(self, indices: list[int], target_item: QTreeWidgetItem | None) -> None:
+        """Handle notes dropped onto category tree."""
         app = self.app
-        if target_row < 0:
+        if target_item is None:
             return
-        last_idx = app.cat_listbox.count() - 1
+        role = target_item.data(0, Qt.ItemDataRole.UserRole)
 
-        # Ignore drop on Preferite (1) and Cestino (last)
-        if target_row == 1 or target_row == last_idx:
+        # Ignore drop on Preferite and Cestino
+        if role in ("__favorites__", "__trash__"):
             return
 
         # Determine target category_id
-        target_id = db._UNSET if target_row == 0 else app.categories[target_row - 2]["id"]
+        target_id: int | db._Sentinel | None
+        if role == "__all__":
+            target_id = db._UNSET
+        elif isinstance(role, int):
+            target_id = role
+        else:
+            return
 
         # Move all selected notes
         self.save_current()
@@ -226,7 +255,35 @@ class NoteController:
         # Reload
         app.current_note_id = None
         self.load_categories()
-        app.cat_listbox.setCurrentRow(target_row)
+        # Re-select the target item
+        if isinstance(role, int) and role in app._cat_items:
+            app.cat_tree.setCurrentItem(app._cat_items[role])
+        self.on_category_select()
+
+    def _on_category_dropped(self, cat_id: int, target_item: QTreeWidgetItem | None) -> None:
+        """Handle category dropped onto another category (reparenting)."""
+        if target_item is None:
+            return
+        role = target_item.data(0, Qt.ItemDataRole.UserRole)
+
+        # Only allow drop on "__all__" (make root) or on user categories
+        if role in ("__favorites__", "__trash__"):
+            return
+
+        new_parent_id: int | None = None
+        if isinstance(role, int):
+            new_parent_id = role
+        # role == "__all__" means make it a root category
+
+        if not db.move_category(cat_id, new_parent_id):
+            QMessageBox.warning(
+                self.app, "Errore", "Impossibile spostare: la destinazione e' un discendente della categoria."
+            )
+            return
+
+        self.load_categories()
+        if cat_id in self.app._cat_items:
+            self.app.cat_tree.setCurrentItem(self.app._cat_items[cat_id])
         self.on_category_select()
 
     # --- Editor ---
@@ -377,35 +434,53 @@ class NoteController:
 
     def show_category_context_menu(self, pos: QPoint) -> None:
         app = self.app
-        item = app.cat_listbox.itemAt(pos)
+        item = app.cat_tree.itemAt(pos)
         if not item:
             return
-        idx = app.cat_listbox.row(item)
-        app.cat_listbox.setCurrentRow(idx)
+        app.cat_tree.setCurrentItem(item)
         self.on_category_select()
 
+        role = item.data(0, Qt.ItemDataRole.UserRole)
         menu = QMenu(app)
-        last_idx = app.cat_listbox.count() - 1
-        is_user_category = 2 <= idx < last_idx
+        is_user_category = isinstance(role, int)
 
         if is_user_category:
-            cat_id = app.categories[idx - 2]["id"]
+            cat_id = role
+            menu.addAction("Nuova Sottocategoria", lambda: self.new_subcategory(cat_id))
+            menu.addSeparator()
             menu.addAction("Rinomina", self.rename_category)
             menu.addAction("Elimina", self.delete_category)
             menu.addAction("Svuota categoria", self.empty_category)
             # Submenu "Sposta note in"
-            move_menu = menu.addMenu("Sposta note in")
-            move_menu.addAction("Nessuna categoria", lambda cid=cat_id: self._move_category_notes_to(cid, db._UNSET))
+            move_notes_menu = menu.addMenu("Sposta note in")
+            move_notes_menu.addAction(
+                "Nessuna categoria", lambda cid=cat_id: self._move_category_notes_to(cid, db._UNSET)
+            )
             for cat in app.categories:
                 if cat["id"] != cat_id:
-                    move_menu.addAction(
-                        cat["name"],
+                    path = db.get_category_path(cat["id"])
+                    display = " > ".join(r["name"] for r in path)
+                    move_notes_menu.addAction(
+                        display,
                         lambda from_id=cat_id, to_id=cat["id"]: self._move_category_notes_to(from_id, to_id),
+                    )
+            # Submenu "Sposta categoria in"
+            descendants = db.get_descendant_category_ids(cat_id)
+            excluded = {cat_id} | set(descendants)
+            move_cat_menu = menu.addMenu("Sposta categoria in")
+            move_cat_menu.addAction("Radice (nessun genitore)", lambda cid=cat_id: self._reparent_category(cid, None))
+            for cat in app.categories:
+                if cat["id"] not in excluded:
+                    path = db.get_category_path(cat["id"])
+                    display = " > ".join(r["name"] for r in path)
+                    move_cat_menu.addAction(
+                        display,
+                        lambda cid=cat_id, pid=cat["id"]: self._reparent_category(cid, pid),
                     )
             menu.addSeparator()
 
         menu.addAction("Nuova Categoria", self.new_category)
-        menu.popup(app.cat_listbox.mapToGlobal(pos))
+        menu.popup(app.cat_tree.mapToGlobal(pos))
 
     def show_context_menu(self, pos: QPoint) -> None:
         app = self.app
@@ -522,7 +597,9 @@ class NoteController:
             move_menu = menu.addMenu("Sposta in")
             move_menu.addAction("Nessuna categoria", lambda: self._move_multiple_to_category(sel, db._UNSET))
             for cat in app.categories:
-                move_menu.addAction(cat["name"], lambda cid=cat["id"]: self._move_multiple_to_category(sel, cid))
+                path = db.get_category_path(cat["id"])
+                display = " > ".join(r["name"] for r in path)
+                move_menu.addAction(display, lambda cid=cat["id"]: self._move_multiple_to_category(sel, cid))
             menu.addSeparator()
             menu.addAction(f"Sposta {n} note nel cestino", lambda: self._soft_delete_multiple(sel))
 
@@ -589,13 +666,15 @@ class NoteController:
         cat = next((c for c in app.categories if c["id"] == app.current_category_id), None)
         if not cat:
             return
-        note_ids = db.get_note_ids_by_category(app.current_category_id)
+        note_ids = db.get_note_ids_by_category(app.current_category_id, include_descendants=True)
         if not note_ids:
             QMessageBox.information(app, "Info", f"La categoria '{cat['name']}' e' gia' vuota.")
             return
         if (
             QMessageBox.question(
-                app, "Svuota Categoria", f"Spostare {len(note_ids)} nota/e di '{cat['name']}' nel cestino?"
+                app,
+                "Svuota Categoria",
+                f"Spostare {len(note_ids)} nota/e di '{cat['name']}' (e sottocategorie) nel cestino?",
             )
             != QMessageBox.StandardButton.Yes
         ):
@@ -748,6 +827,23 @@ class NoteController:
             db.add_category(dlg.result)
             self.load_categories()
 
+    def new_subcategory(self, parent_id: int) -> None:
+        dlg = CategoryDialog(self.app, title="Nuova Sottocategoria")
+        if dlg.result:
+            db.add_category(dlg.result, parent_id=parent_id)
+            self.load_categories()
+
+    def _reparent_category(self, cat_id: int, new_parent_id: int | None) -> None:
+        if not db.move_category(cat_id, new_parent_id):
+            QMessageBox.warning(
+                self.app, "Errore", "Impossibile spostare: la destinazione e' un discendente della categoria."
+            )
+            return
+        self.load_categories()
+        if cat_id in self.app._cat_items:
+            self.app.cat_tree.setCurrentItem(self.app._cat_items[cat_id])
+        self.on_category_select()
+
     def rename_category(self) -> None:
         app = self.app
         if app.current_category_id is None:
@@ -770,21 +866,37 @@ class NoteController:
         if not cat:
             return
 
-        note_ids = db.get_note_ids_by_category(app.current_category_id)
-        if note_ids:
+        descendants = db.get_descendant_category_ids(app.current_category_id)
+        note_ids = db.get_note_ids_by_category(app.current_category_id, include_descendants=True)
+        has_children = len(descendants) > 0
+
+        if note_ids or has_children:
+            msg = f"La categoria '{cat['name']}'"
+            parts: list[str] = []
+            if note_ids:
+                parts.append(f"contiene {len(note_ids)} nota/e")
+            if has_children:
+                parts.append(f"ha {len(descendants)} sottocategoria/e")
+            msg += " " + " e ".join(parts) + ".\n\n"
+            msg += "Si = Elimina tutto (categoria, sottocategorie e note nel cestino)\n"
+            msg += "No = Promuovi sottocategorie al livello superiore ed elimina solo questa\n"
+            msg += "Annulla = Non fare nulla"
+
             btn = QMessageBox.question(
                 app,
                 "Elimina Categoria",
-                f"La categoria '{cat['name']}' contiene {len(note_ids)} nota/e.\n\n"
-                f"Si = Elimina categoria e sposta note nel cestino\n"
-                f"No = Elimina solo la categoria (le note restano)\n"
-                f"Annulla = Non fare nulla",
+                msg,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Cancel,
             )
             if btn == QMessageBox.StandardButton.Yes:
-                db.delete_category_with_notes(app.current_category_id)
+                db.delete_category_tree(app.current_category_id)
             elif btn == QMessageBox.StandardButton.No:
+                db.promote_children(app.current_category_id)
+                # Soft-delete notes in this specific category only
+                own_notes = db.get_note_ids_by_category(app.current_category_id)
+                if own_notes:
+                    db.soft_delete_notes(own_notes)
                 db.delete_category(app.current_category_id)
             else:
                 return

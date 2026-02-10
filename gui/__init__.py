@@ -22,7 +22,7 @@ if TYPE_CHECKING:
         QWidget,
     )
 
-    from gui.widgets import CategoryList, ChecklistEditor, DraggableNoteList
+    from gui.widgets import CategoryTree, ChecklistEditor, DraggableNoteList
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QMainWindow
@@ -82,7 +82,8 @@ class MyNotesApp(QMainWindow):
         # Widgets (set by build_toolbar / build_main_layout)
         self.search_entry: QLineEdit
         self.tag_combo: QComboBox
-        self.cat_listbox: CategoryList
+        self.cat_tree: CategoryTree
+        self._cat_items: dict[int, Any] = {}
         self.note_listbox: DraggableNoteList
         self.list_header: QLabel
         self.title_entry: QLineEdit
@@ -189,6 +190,17 @@ class MyNotesApp(QMainWindow):
                 font-size: {FONT_BASE}pt;
             }}
             QListWidget::item:selected {{
+                background-color: {SELECT_BG};
+                color: {SELECT_FG};
+            }}
+            QTreeWidget {{
+                background-color: {BG_ELEVATED};
+                color: {FG_PRIMARY};
+                border: none;
+                border-right: 1px solid {BORDER};
+                font-size: {FONT_BASE}pt;
+            }}
+            QTreeWidget::item:selected {{
                 background-color: {SELECT_BG};
                 color: {SELECT_FG};
             }}

@@ -128,14 +128,14 @@ def build_main_layout(app: MyNotesApp) -> None:
     )
     sidebar_layout.addWidget(cat_header)
 
-    from gui.widgets import CategoryList
+    from gui.widgets import CategoryTree
 
-    app.cat_listbox = CategoryList()
-    app.cat_listbox.setStyleSheet(f"background-color: {BG_SURFACE}; border: none;")
-    app.cat_listbox.itemClicked.connect(lambda item: app.notes_ctl.on_category_select())
-    app.cat_listbox.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-    app.cat_listbox.customContextMenuRequested.connect(lambda pos: app.notes_ctl.show_category_context_menu(pos))
-    sidebar_layout.addWidget(app.cat_listbox)
+    app.cat_tree = CategoryTree()
+    app.cat_tree.setStyleSheet(f"background-color: {BG_SURFACE}; border: none;")
+    app.cat_tree.itemClicked.connect(lambda item, col: app.notes_ctl.on_category_select())
+    app.cat_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+    app.cat_tree.customContextMenuRequested.connect(lambda pos: app.notes_ctl.show_category_context_menu(pos))
+    sidebar_layout.addWidget(app.cat_tree)
 
     sidebar.setMinimumWidth(160)
     sidebar.setMaximumWidth(300)

@@ -14,7 +14,7 @@ from PySide6.QtGui import (
     QMouseEvent,
     QTextCursor,
 )
-from PySide6.QtWidgets import QListWidget, QPlainTextEdit, QWidget
+from PySide6.QtWidgets import QListWidget, QPlainTextEdit, QTreeWidget, QWidget
 
 
 class DraggableNoteList(QListWidget):
@@ -74,6 +74,66 @@ class CategoryList(QListWidget):
 
         self.notes_dropped.emit(indices, target_row)
         event.acceptProposedAction()
+
+
+class CategoryTree(QTreeWidget):
+    """QTreeWidget that accepts note drops and category reparenting via drag-drop."""
+
+    notes_dropped = Signal(list, object)  # (note_indices, QTreeWidgetItem)
+    category_dropped = Signal(int, object)  # (cat_id, target QTreeWidgetItem)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setHeaderHidden(True)
+        self.setIndentation(16)
+        self.setAcceptDrops(True)
+        self.setDragEnabled(True)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.setDragDropMode(QTreeWidget.DragDropMode.DragDrop)
+
+    def startDrag(self, supportedActions: Qt.DropAction) -> None:
+        item = self.currentItem()
+        if not item:
+            return
+        role_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not isinstance(role_data, int):
+            return  # Don't drag special items
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setData("application/x-mynotes-category", str(role_data).encode())
+        drag.setMimeData(mime)
+        drag.exec(Qt.DropAction.MoveAction)
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        mime = event.mimeData()
+        if mime.hasFormat("application/x-mynotes-indices") or mime.hasFormat("application/x-mynotes-category"):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:
+        mime = event.mimeData()
+        if mime.hasFormat("application/x-mynotes-indices") or mime.hasFormat("application/x-mynotes-category"):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        mime = event.mimeData()
+        target_item = self.itemAt(event.position().toPoint())
+
+        if mime.hasFormat("application/x-mynotes-indices"):
+            data = bytes(mime.data("application/x-mynotes-indices").data()).decode()
+            indices = [int(i) for i in data.split(",") if i]
+            self.notes_dropped.emit(indices, target_item)
+            event.acceptProposedAction()
+        elif mime.hasFormat("application/x-mynotes-category"):
+            data = bytes(mime.data("application/x-mynotes-category").data()).decode()
+            cat_id = int(data)
+            self.category_dropped.emit(cat_id, target_item)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
 
 class ChecklistEditor(QPlainTextEdit):

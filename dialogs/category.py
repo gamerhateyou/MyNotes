@@ -18,8 +18,32 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import database as db
+
 if TYPE_CHECKING:
     from PySide6.QtGui import QKeyEvent
+
+
+def _get_category_depth(cat_id: int, categories: list[sqlite3.Row]) -> int:
+    """Return nesting depth of a category (0 = root)."""
+    cat_map = {c["id"]: c for c in categories}
+    depth = 0
+    current_id: int | None = cat_id
+    visited: set[int] = set()
+    while current_id is not None and current_id not in visited:
+        visited.add(current_id)
+        cat = cat_map.get(current_id)
+        if cat is None or cat["parent_id"] is None:
+            break
+        depth += 1
+        current_id = cat["parent_id"]
+    return depth
+
+
+def _get_category_display_name(cat_id: int) -> str:
+    """Return hierarchical display name like 'Parent > Child'."""
+    path = db.get_category_path(cat_id)
+    return " > ".join(r["name"] for r in path)
 
 
 class CategoryDialog(QDialog):
@@ -86,7 +110,10 @@ class NoteDialog(QDialog):
         self.cat_combo = QComboBox()
         self.cat_combo.addItem("(Nessuna)")
         for c in categories:
-            self.cat_combo.addItem(c["name"])
+            depth = _get_category_depth(c["id"], categories)
+            indent = "  " * depth
+            display = _get_category_display_name(c["id"]) if depth > 0 else c["name"]
+            self.cat_combo.addItem(f"{indent}{display}")
         layout.addWidget(self.cat_combo)
 
         btn_layout = QHBoxLayout()
