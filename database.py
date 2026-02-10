@@ -80,9 +80,7 @@ def init_db() -> None:
                 parent_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
                 sort_order INTEGER DEFAULT 0
             );
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_cat_name_parent
-                ON categories(name, COALESCE(parent_id, 0));
-            CREATE INDEX IF NOT EXISTS idx_cat_parent ON categories(parent_id);
+            -- Category indices created in _migrate() to support existing DBs
             CREATE TABLE IF NOT EXISTS notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
