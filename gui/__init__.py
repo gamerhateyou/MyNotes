@@ -71,7 +71,7 @@ class MyNotesApp(QMainWindow):
         self._save_job: QTimer | None = None
         self._image_refs: list[Any] = []
         self._version_counter: int = 0
-        self._decrypted_cache: dict[int, str] = {}
+        self._decrypted_cache: dict[int, tuple[str, str]] = {}  # note_id -> (text, password)
         self._detached_windows: dict[int, Any] = {}
 
         # Data
@@ -145,7 +145,7 @@ class MyNotesApp(QMainWindow):
             self.note_listbox.clearSelection()
         from gui.note_window import NoteWindow
 
-        win = NoteWindow(self, note_id)
+        win = NoteWindow(self, note_id, decrypted_entry=self._decrypted_cache.get(note_id))
         self._detached_windows[note_id] = win
         win.show()
 

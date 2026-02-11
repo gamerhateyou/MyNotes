@@ -75,7 +75,7 @@ from gui.widgets import ChecklistEditor
 class NoteWindow(QMainWindow):
     """Finestra indipendente per editing di una nota."""
 
-    def __init__(self, parent_app: MyNotesApp, note_id: int) -> None:
+    def __init__(self, parent_app: MyNotesApp, note_id: int, *, decrypted_entry: tuple[str, str] | None = None) -> None:
         super().__init__(parent_app)
         self.app: MyNotesApp = parent_app
         self.note_id: int = note_id
@@ -84,7 +84,9 @@ class NoteWindow(QMainWindow):
         # State
         self._save_job: QTimer | None = None
         self._image_refs: list[Any] = []
-        self._decrypted_cache: dict[int, str] = {}
+        self._decrypted_cache: dict[int, tuple[str, str]] = {}  # note_id -> (text, password)
+        if decrypted_entry is not None:
+            self._decrypted_cache[note_id] = decrypted_entry
         self._version_counter: int = 0
         self.gallery_labels: list[QLabel] = []
         self.selected_image_index: int | None = None
@@ -330,7 +332,7 @@ class NoteWindow(QMainWindow):
 
         if note["is_encrypted"]:
             if self.note_id in self._decrypted_cache:
-                self.text_editor.setPlainText(self._decrypted_cache[self.note_id])
+                self.text_editor.setPlainText(self._decrypted_cache[self.note_id][0])
             else:
                 self.text_editor.setPlainText("[Nota criptata - usa Nota > Decripta nota...]")
                 self.text_editor.setReadOnly(True)
@@ -397,7 +399,10 @@ class NoteWindow(QMainWindow):
                 db.save_version(self.note_id, title, content)
 
         if note["is_encrypted"] and self.note_id in self._decrypted_cache:
-            self._decrypted_cache[self.note_id] = content
+            password = self._decrypted_cache[self.note_id][1]
+            encrypted = crypto_utils.encrypt(content, password)
+            db.set_note_encrypted(self.note_id, encrypted, True)
+            self._decrypted_cache[self.note_id] = (content, password)
         else:
             db.update_note(self.note_id, title=title, content=content)
 
@@ -693,18 +698,26 @@ class NoteWindow(QMainWindow):
                 db.set_note_encrypted(self.note_id, decrypted, False)
                 self._decrypted_cache.pop(self.note_id, None)
             elif btn == QMessageBox.StandardButton.No:
-                self._decrypted_cache[self.note_id] = decrypted
+                self._decrypted_cache[self.note_id] = (decrypted, dlg.result)
             else:
                 return
             self._display_note()
 
     # --- Lifecycle ---
 
+    def _sync_cache_to_app(self) -> None:
+        """Sync decrypted cache back to main app so it shows fresh content."""
+        if self.note_id in self._decrypted_cache:
+            self.app._decrypted_cache[self.note_id] = self._decrypted_cache[self.note_id]
+        else:
+            self.app._decrypted_cache.pop(self.note_id, None)
+
     def _on_close(self) -> None:
         if self._closing:
             return
         self._closing = True
         self.save_current()
+        self._sync_cache_to_app()
         self.app._detached_windows.pop(self.note_id, None)
         self.app.notes_ctl.load_notes()
         self.close()
@@ -713,6 +726,7 @@ class NoteWindow(QMainWindow):
         if not self._closing:
             self._closing = True
             self.save_current()
+            self._sync_cache_to_app()
             self.app._detached_windows.pop(self.note_id, None)
             self.app.notes_ctl.load_notes()
         event.accept()

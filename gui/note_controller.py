@@ -256,7 +256,7 @@ class NoteController:
         if note["is_encrypted"]:
             if note_id in app._decrypted_cache:
                 app.editor_stack.setCurrentIndex(0)
-                app.text_editor.setPlainText(app._decrypted_cache[note_id])
+                app.text_editor.setPlainText(app._decrypted_cache[note_id][0])
             else:
                 app.editor_stack.setCurrentIndex(1)
                 app.decrypt_entry.clear()
@@ -352,7 +352,10 @@ class NoteController:
                 db.save_version(app.current_note_id, title, content)
 
         if note["is_encrypted"] and app.current_note_id in app._decrypted_cache:
-            app._decrypted_cache[app.current_note_id] = content
+            password = app._decrypted_cache[app.current_note_id][1]
+            encrypted = crypto_utils.encrypt(content, password)
+            db.set_note_encrypted(app.current_note_id, encrypted, True)
+            app._decrypted_cache[app.current_note_id] = (content, password)
         else:
             db.update_note(app.current_note_id, title=title, content=content)
 
@@ -867,7 +870,7 @@ class NoteController:
             app.decrypt_entry.selectAll()
             app.decrypt_entry.setFocus()
             return
-        app._decrypted_cache[app.current_note_id] = decrypted
+        app._decrypted_cache[app.current_note_id] = (decrypted, password)
         app.decrypt_entry.clear()
         app.decrypt_error_label.setText("")
         self.display_note(app.current_note_id)
@@ -925,7 +928,7 @@ class NoteController:
                 db.set_note_encrypted(app.current_note_id, decrypted, False)
                 app._decrypted_cache.pop(app.current_note_id, None)
             elif btn == QMessageBox.StandardButton.No:
-                app._decrypted_cache[app.current_note_id] = decrypted
+                app._decrypted_cache[app.current_note_id] = (decrypted, dlg.result)
             else:
                 return
             self.display_note(app.current_note_id)
