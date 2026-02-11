@@ -270,8 +270,8 @@ class NoteController:
 
         app.text_editor.blockSignals(False)
 
-        if app.editor_tabs.currentIndex() == 1:
-            self.update_preview()
+        app.editor_tabs.setCurrentIndex(1)
+        self.update_preview()
 
         created = note["created_at"][:16].replace("T", " ")
         updated = note["updated_at"][:16].replace("T", " ")
