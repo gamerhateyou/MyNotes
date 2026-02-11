@@ -7,9 +7,10 @@ import threading
 from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
+from urllib.parse import unquote
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices, QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -208,7 +209,8 @@ class NoteWindow(QMainWindow):
         self.editor_tabs.addTab(self.text_editor, "Modifica")
 
         self.preview_browser = QTextBrowser()
-        self.preview_browser.setOpenExternalLinks(True)
+        self.preview_browser.setOpenExternalLinks(False)
+        self.preview_browser.anchorClicked.connect(self._on_preview_link_clicked)
         self.editor_tabs.addTab(self.preview_browser, "Preview")
 
         self.editor_tabs.currentChanged.connect(self._on_tab_changed)
@@ -291,7 +293,10 @@ class NoteWindow(QMainWindow):
         """Render markdown content to HTML in the preview tab."""
         import markdown
 
+        from gui.note_controller import NoteController
+
         content = self.text_editor.toPlainText()
+        content = NoteController._replace_wikilinks(content)
         html = markdown.markdown(content, extensions=["fenced_code", "tables", "nl2br"])
         styled = (
             f"<div style=\"font-family: '{UI_FONT}', sans-serif; "
@@ -300,6 +305,27 @@ class NoteWindow(QMainWindow):
             f"{html}</div>"
         )
         self.preview_browser.setHtml(styled)
+
+    def _on_preview_link_clicked(self, url: QUrl) -> None:
+        """Handle link clicks in the preview browser."""
+        if url.scheme() == "mynote":
+            title = unquote(url.path().lstrip("/"))
+            note = db.get_note_by_title(title)
+            if note:
+                self.app.notes_ctl.display_note(note["id"])
+                for i in range(self.app.note_listbox.count()):
+                    item = self.app.note_listbox.item(i)
+                    if item and item.data(Qt.ItemDataRole.UserRole) == note["id"]:
+                        self.app.note_listbox.setCurrentRow(i)
+                        break
+                self.app.raise_()
+                self.app.activateWindow()
+            else:
+                QMessageBox.information(self, "Nota non trovata", f"Nessuna nota con titolo '{title}'.")
+        elif not url.scheme() and url.hasFragment():
+            self.preview_browser.scrollToAnchor(url.fragment())
+        else:
+            QDesktopServices.openUrl(url)
 
     def _toggle_preview(self) -> None:
         """Toggle between edit and preview tabs."""

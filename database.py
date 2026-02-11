@@ -356,6 +356,15 @@ def get_note(note_id: int) -> sqlite3.Row | None:
         return conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()  # type: ignore[no-any-return]
 
 
+def get_note_by_title(title: str) -> sqlite3.Row | None:
+    """Find an active note by exact title. Returns most recently updated if duplicates exist."""
+    with _connect() as conn:
+        return conn.execute(  # type: ignore[no-any-return]
+            "SELECT * FROM notes WHERE title = ? AND is_deleted = 0 ORDER BY updated_at DESC LIMIT 1",
+            (title,),
+        ).fetchone()
+
+
 def add_note(title: str, content: str = "", category_id: int | None = None) -> int:
     now = datetime.now().isoformat()
     with _connect() as conn:

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
+from urllib.parse import quote, unquote
 
-from PySide6.QtCore import QPoint, Qt, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QPoint, Qt, QTimer, QUrl
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import QListWidgetItem, QMenu, QMessageBox, QTreeWidgetItem
 
 import database as db
@@ -637,11 +639,44 @@ class NoteController:
     def _apply_audio_formatting(self) -> None:
         apply_audio_formatting(self.app.text_editor)
 
+    @staticmethod
+    def _replace_wikilinks(text: str) -> str:
+        """Convert [[Title]] wikilinks to HTML anchor tags before markdown rendering."""
+
+        def _wikilink_to_html(m: re.Match[str]) -> str:
+            title = m.group(1).strip()
+            encoded = quote(title, safe="")
+            return f'<a href="mynote:///{encoded}">{title}</a>'
+
+        return re.sub(r"\[\[([^\[\]]+)\]\]", _wikilink_to_html, text)
+
+    def _on_preview_link_clicked(self, url: QUrl) -> None:
+        """Handle link clicks in the preview browser."""
+        if url.scheme() == "mynote":
+            title = unquote(url.path().lstrip("/"))
+            note = db.get_note_by_title(title)
+            if note:
+                self.display_note(note["id"])
+                # Select the note in the list if visible
+                for i in range(self.app.note_listbox.count()):
+                    item = self.app.note_listbox.item(i)
+                    if item and item.data(Qt.ItemDataRole.UserRole) == note["id"]:
+                        self.app.note_listbox.setCurrentRow(i)
+                        break
+            else:
+                QMessageBox.information(self.app, "Nota non trovata", f"Nessuna nota con titolo '{title}'.")
+        elif not url.scheme() and url.hasFragment():
+            # Internal anchor link (#section) — scroll within preview
+            self.app.preview_browser.scrollToAnchor(url.fragment())
+        else:
+            QDesktopServices.openUrl(url)
+
     def update_preview(self) -> None:
         """Render markdown content to HTML in the preview tab."""
         import markdown
 
         content = self.app.text_editor.toPlainText()
+        content = self._replace_wikilinks(content)
         html = markdown.markdown(content, extensions=["fenced_code", "tables", "nl2br"])
         styled = (
             f"<div style=\"font-family: '{UI_FONT}', sans-serif; "

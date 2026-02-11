@@ -119,6 +119,9 @@ class MyNotesApp(QMainWindow):
         self.update_ctl = UpdateController(self)
         self.pastebin_ctl = PastebinController(self)
 
+        # Connect preview link clicks to wikilink handler
+        self.preview_browser.anchorClicked.connect(self.notes_ctl._on_preview_link_clicked)
+
         # Backup: migrate legacy password, prompt if needed
         backup_utils.migrate_legacy_password()
         self._backup_scheduler = backup_utils.BackupScheduler(self)

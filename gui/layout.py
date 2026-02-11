@@ -250,7 +250,7 @@ def build_main_layout(app: MyNotesApp) -> None:
     app.editor_tabs.addTab(app.text_editor, "Modifica")
 
     app.preview_browser = QTextBrowser()
-    app.preview_browser.setOpenExternalLinks(True)
+    app.preview_browser.setOpenExternalLinks(False)
     app.editor_tabs.addTab(app.preview_browser, "Preview")
 
     app.editor_tabs.currentChanged.connect(lambda idx: app.notes_ctl.update_preview() if idx == 1 else None)
