@@ -1,4 +1,4 @@
 from __future__ import annotations
 
-VERSION: str = "3.12.1"
+VERSION: str = "3.12.2"
 GITHUB_REPO: str = "gamerhateyou/MyNotes"

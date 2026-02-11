@@ -650,6 +650,11 @@ class NoteController:
 
         return re.sub(r"\[\[([^\[\]]+)\]\]", _wikilink_to_html, text)
 
+    @staticmethod
+    def _add_heading_anchors(html: str) -> str:
+        """Add <a name=""> tags inside headings for QTextBrowser scrollToAnchor() support."""
+        return re.sub(r'<(h[1-6])\s+id="([^"]*)">', r'<\1 id="\2"><a name="\2"></a>', html)
+
     def _on_preview_link_clicked(self, url: QUrl) -> None:
         """Handle link clicks in the preview browser."""
         if url.scheme() == "mynote":
@@ -678,6 +683,7 @@ class NoteController:
         content = self.app.text_editor.toPlainText()
         content = self._replace_wikilinks(content)
         html = markdown.markdown(content, extensions=["fenced_code", "tables", "nl2br", "toc"])
+        html = self._add_heading_anchors(html)
         styled = (
             f"<div style=\"font-family: '{UI_FONT}', sans-serif; "
             f"color: {FG_PRIMARY}; background-color: {BG_DARK}; "
