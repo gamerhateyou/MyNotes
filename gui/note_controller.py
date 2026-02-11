@@ -297,7 +297,7 @@ class NoteController:
         app = self.app
         app.current_note_id = None
         app.editor_stack.setCurrentIndex(0)
-        app.editor_tabs.setCurrentIndex(0)
+        app.editor_tabs.setCurrentIndex(1)
         app.title_entry.blockSignals(True)
         app.title_entry.clear()
         app.title_entry.blockSignals(False)
