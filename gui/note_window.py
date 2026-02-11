@@ -297,7 +297,7 @@ class NoteWindow(QMainWindow):
 
         content = self.text_editor.toPlainText()
         content = NoteController._replace_wikilinks(content)
-        html = markdown.markdown(content, extensions=["fenced_code", "tables", "nl2br"])
+        html = markdown.markdown(content, extensions=["fenced_code", "tables", "nl2br", "toc"])
         styled = (
             f"<div style=\"font-family: '{UI_FONT}', sans-serif; "
             f"color: {FG_PRIMARY}; background-color: {BG_DARK}; "

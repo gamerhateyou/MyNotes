@@ -677,7 +677,7 @@ class NoteController:
 
         content = self.app.text_editor.toPlainText()
         content = self._replace_wikilinks(content)
-        html = markdown.markdown(content, extensions=["fenced_code", "tables", "nl2br"])
+        html = markdown.markdown(content, extensions=["fenced_code", "tables", "nl2br", "toc"])
         styled = (
             f"<div style=\"font-family: '{UI_FONT}', sans-serif; "
             f"color: {FG_PRIMARY}; background-color: {BG_DARK}; "
