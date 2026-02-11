@@ -38,6 +38,13 @@ from gui.constants import (
     MONO_FONT,
     UI_FONT,
 )
+from gui.formatting import (
+    insert_md_code_block,
+    insert_md_horizontal_rule,
+    insert_md_line_prefix,
+    insert_md_link,
+    insert_md_wrap,
+)
 
 if TYPE_CHECKING:
     from gui import MyNotesApp
@@ -190,6 +197,38 @@ def build_main_layout(app: MyNotesApp) -> None:
     app.tags_label = QLabel("")
     app.tags_label.setStyleSheet(f"color: {FG_SECONDARY}; font-size: {FONT_SM}pt; padding: 2px 12px;")
     editor_layout.addWidget(app.tags_label)
+
+    # Formatting toolbar
+    fmt_bar = QToolBar()
+    fmt_bar.setMovable(False)
+    fmt_bar.setIconSize(QSize(16, 16))
+    fmt_bar.setStyleSheet("QToolBar { spacing: 1px; padding: 2px 4px; }")
+
+    def _add_fmt(label: str, tip: str, cb: object) -> None:
+        btn = QPushButton(label)
+        btn.setToolTip(tip)
+        btn.setFixedSize(32, 26)
+        btn.setStyleSheet("font-size: 10pt; padding: 0px;")
+        btn.clicked.connect(cb)
+        fmt_bar.addWidget(btn)
+
+    _add_fmt("G", "Grassetto", lambda: insert_md_wrap(app.text_editor, "**", "**"))
+    _add_fmt("I", "Corsivo", lambda: insert_md_wrap(app.text_editor, "*", "*"))
+    _add_fmt("S", "Barrato", lambda: insert_md_wrap(app.text_editor, "~~", "~~"))
+    _add_fmt("`", "Codice inline", lambda: insert_md_wrap(app.text_editor, "`", "`"))
+    fmt_bar.addSeparator()
+    _add_fmt("H1", "Titolo 1", lambda: insert_md_line_prefix(app.text_editor, "# "))
+    _add_fmt("H2", "Titolo 2", lambda: insert_md_line_prefix(app.text_editor, "## "))
+    _add_fmt("H3", "Titolo 3", lambda: insert_md_line_prefix(app.text_editor, "### "))
+    fmt_bar.addSeparator()
+    _add_fmt("Link", "Link", lambda: insert_md_link(app.text_editor))
+    _add_fmt("\u2022", "Lista puntata", lambda: insert_md_line_prefix(app.text_editor, "- "))
+    _add_fmt("1.", "Lista numerata", lambda: insert_md_line_prefix(app.text_editor, "1. "))
+    _add_fmt(">", "Citazione", lambda: insert_md_line_prefix(app.text_editor, "> "))
+    _add_fmt("{ }", "Blocco codice", lambda: insert_md_code_block(app.text_editor))
+    _add_fmt("---", "Linea orizzontale", lambda: insert_md_horizontal_rule(app.text_editor))
+
+    editor_layout.addWidget(fmt_bar)
 
     # Editor + gallery vertical splitter
     editor_splitter = QSplitter(Qt.Orientation.Vertical)
