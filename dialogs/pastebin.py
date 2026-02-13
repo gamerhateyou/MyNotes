@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import webbrowser
 from typing import Any
+from urllib.parse import quote
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -12,6 +13,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -306,6 +308,115 @@ class PastebinShareDialog(QDialog):
             "expire_date": self.expire_combo.currentData(),
         }
         self.accept()
+
+
+# --- Social sharing URLs ---
+
+_SOCIAL_SHARE: list[tuple[str, str]] = [
+    ("\U0001f426 Twitter", "https://twitter.com/intent/tweet?text={text}&url={url}"),
+    ("\U0001f4d8 Facebook", "https://www.facebook.com/sharer/sharer.php?u={url}"),
+    ("\U0001f4bc LinkedIn", "https://www.linkedin.com/sharing/share-offsite/?url={url}"),
+    ("\U0001f4e8 Telegram", "https://t.me/share/url?url={url}&text={text}"),
+    ("\U0001f4ac WhatsApp", "https://wa.me/?text={text}+{url}"),
+    ("\U0001f517 Reddit", "https://www.reddit.com/submit?url={url}&title={title}"),
+]
+
+
+def _share_on_social(url: str, title: str, template: str) -> None:
+    """Open browser to social share page with pre-filled URL and text."""
+    text = f"Leggi la mia nota: {title}"
+    share_url = template.format(
+        url=quote(url, safe=""),
+        text=quote(text, safe=""),
+        title=quote(title, safe=""),
+    )
+    webbrowser.open(share_url)
+
+
+def _share_via_email(url: str, title: str) -> None:
+    """Open default email client with pre-filled subject and body."""
+    subject = quote(f"Nota condivisa: {title}", safe="")
+    body = quote(f"Leggi la mia nota: {title}\n\n{url}", safe="")
+    webbrowser.open(f"mailto:?subject={subject}&body={body}")
+
+
+def _build_share_buttons(url: str, title: str, parent: QWidget) -> QWidget:
+    """Build a widget with social sharing buttons in a grid layout."""
+    container = QWidget(parent)
+    grid = QGridLayout(container)
+    grid.setContentsMargins(0, 0, 0, 0)
+
+    for i, (label, template) in enumerate(_SOCIAL_SHARE):
+        btn = QPushButton(label)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.clicked.connect(lambda _checked=False, u=url, t=title, tmpl=template: _share_on_social(u, t, tmpl))
+        grid.addWidget(btn, i // 3, i % 3)
+
+    # Email button on last row
+    email_btn = QPushButton("\U0001f4e7 Email")
+    email_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    email_btn.clicked.connect(lambda _checked=False, u=url, t=title: _share_via_email(u, t))
+    row = len(_SOCIAL_SHARE) // 3
+    grid.addWidget(email_btn, row, 0)
+
+    return container
+
+
+class PastebinSuccessDialog(QDialog):
+    """Dialog di successo pubblicazione Pastebin con condivisione social."""
+
+    def __init__(self, parent: QWidget, paste_url: str, paste_title: str) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Pubblicato su Pastebin")
+        self.setMinimumWidth(420)
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Success header
+        header = QLabel("\u2713 Nota pubblicata su Pastebin!")
+        header.setFont(QFont(UI_FONT, FONT_BASE, QFont.Weight.Bold))
+        header.setStyleSheet(f"color: {SUCCESS};")
+        layout.addWidget(header)
+
+        # URL row
+        url_layout = QHBoxLayout()
+        url_label = QLabel(f"<a href='{paste_url}'>{paste_url}</a>")
+        url_label.setOpenExternalLinks(True)
+        url_layout.addWidget(url_label, 1)
+        copy_btn = QPushButton("Copia")
+        copy_btn.setFixedWidth(60)
+        copy_btn.clicked.connect(lambda: self._copy_url(paste_url))
+        url_layout.addWidget(copy_btn)
+        layout.addLayout(url_layout)
+
+        # Separator with label
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        layout.addWidget(sep)
+        share_label = QLabel("Condividi")
+        share_label.setFont(QFont(UI_FONT, FONT_BASE, QFont.Weight.Bold))
+        layout.addWidget(share_label)
+
+        # Social buttons
+        share_widget = _build_share_buttons(paste_url, paste_title, self)
+        layout.addWidget(share_widget)
+
+        # Close button
+        close_layout = QHBoxLayout()
+        close_layout.addStretch()
+        close_btn = QPushButton("Chiudi")
+        close_btn.clicked.connect(self.accept)
+        close_layout.addWidget(close_btn)
+        layout.addLayout(close_layout)
+
+        self.exec()
+
+    def _copy_url(self, url: str) -> None:
+        clipboard = QApplication.clipboard()
+        assert clipboard is not None
+        clipboard.setText(url)
 
 
 class PastebinManageDialog(QDialog):

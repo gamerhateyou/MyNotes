@@ -8,7 +8,12 @@ from dialogs.backup import BackupLogDialog, BackupRestoreDialog, BackupSettingsD
 from dialogs.category import CategoryDialog, NoteDialog
 from dialogs.history import VersionHistoryDialog
 from dialogs.password import PasswordDialog
-from dialogs.pastebin import PastebinManageDialog, PastebinSettingsDialog, PastebinShareDialog
+from dialogs.pastebin import (
+    PastebinManageDialog,
+    PastebinSettingsDialog,
+    PastebinShareDialog,
+    PastebinSuccessDialog,
+)
 from dialogs.tags import BulkTagDialog, TagManagerDialog
 
 __all__ = [
@@ -25,5 +30,6 @@ __all__ = [
     "BackupLogDialog",
     "PastebinSettingsDialog",
     "PastebinShareDialog",
+    "PastebinSuccessDialog",
     "PastebinManageDialog",
 ]
