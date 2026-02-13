@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import webbrowser
 from typing import Any
 from urllib.parse import quote
@@ -382,7 +383,8 @@ class PastebinSuccessDialog(QDialog):
 
         # URL row
         url_layout = QHBoxLayout()
-        url_label = QLabel(f"<a href='{paste_url}'>{paste_url}</a>")
+        safe_url = html.escape(paste_url, quote=True)
+        url_label = QLabel(f"<a href='{safe_url}'>{safe_url}</a>")
         url_label.setOpenExternalLinks(True)
         url_layout.addWidget(url_label, 1)
         copy_btn = QPushButton("Copia")
@@ -417,6 +419,9 @@ class PastebinSuccessDialog(QDialog):
         clipboard = QApplication.clipboard()
         assert clipboard is not None
         clipboard.setText(url)
+        sender = self.sender()
+        if isinstance(sender, QPushButton):
+            sender.setText("Copiato!")
 
 
 class PastebinManageDialog(QDialog):
