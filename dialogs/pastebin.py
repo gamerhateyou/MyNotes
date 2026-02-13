@@ -475,6 +475,9 @@ class PastebinManageDialog(QDialog):
         open_btn = QPushButton("Apri nel browser")
         open_btn.clicked.connect(self._open_browser)
         btn_layout.addWidget(open_btn)
+        share_btn = QPushButton("Condividi")
+        share_btn.clicked.connect(self._share_social)
+        btn_layout.addWidget(share_btn)
         btn_layout.addStretch()
         delete_btn = QPushButton("Elimina da Pastebin")
         delete_btn.clicked.connect(self._delete_from_pastebin)
@@ -531,6 +534,13 @@ class PastebinManageDialog(QDialog):
         if row is None:
             return
         webbrowser.open(self._shares[row]["paste_url"])
+
+    def _share_social(self) -> None:
+        row = self._get_selected_row()
+        if row is None:
+            return
+        share = self._shares[row]
+        PastebinSuccessDialog(self, share["paste_url"], share["paste_title"])
 
     def _delete_from_pastebin(self) -> None:
         row = self._get_selected_row()
