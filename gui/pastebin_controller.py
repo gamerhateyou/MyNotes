@@ -10,7 +10,12 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 import database as db
 import pastebin_utils
-from dialogs import PastebinManageDialog, PastebinSettingsDialog, PastebinShareDialog
+from dialogs import (
+    PastebinManageDialog,
+    PastebinSettingsDialog,
+    PastebinShareDialog,
+    PastebinSuccessDialog,
+)
 
 if TYPE_CHECKING:
     from gui import MyNotesApp
@@ -95,11 +100,7 @@ class PastebinController:
             assert clipboard is not None
             clipboard.setText(result)
             app.statusBar().showMessage(f"Disponibile a: {result}")
-            QMessageBox.information(
-                app,
-                "Pubblicato",
-                f"Nota pubblicata su Pastebin!\n\nDisponibile a:\n{result}\n\n(Link copiato negli appunti)",
-            )
+            PastebinSuccessDialog(app, result, params["title"])
             log.info("Paste creato: %s", result)
         else:
             app.statusBar().showMessage("Pubblicazione Pastebin fallita")
